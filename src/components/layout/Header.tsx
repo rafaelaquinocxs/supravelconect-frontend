@@ -85,7 +85,7 @@ const Header: React.FC = () => {
                   </Link>
                 </>
               ) : isDashboard ? (
-                // Menu para usuários logados no dashboard
+                // Menu unificado para todos os usuários logados
                 <>
                   <Link
                     to="/app/dashboard"
@@ -95,46 +95,22 @@ const Header: React.FC = () => {
                   >
                     Dashboard
                   </Link>
-                  {user.role === 'client' && (
-                    <>
-                      <Link
-                        to="/app/technicians"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/technicians') ? 'text-white font-medium' : ''
-                        }`}
-                      >
-                        Técnicos
-                      </Link>
-                      <Link
-                        to="/app/sessions"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/sessions') ? 'text-white font-medium' : ''
-                        }`}
-                      >
-                        Sessões
-                      </Link>
-                    </>
-                  )}
-                  {user.role === 'technician' && (
-                    <>
-                      <Link
-                        to="/app/sessions"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/sessions') ? 'text-white font-medium' : ''
-                        }`}
-                      >
-                        Solicitações
-                      </Link>
-                      <Link
-                        to="/app/earnings"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/earnings') ? 'text-white font-medium' : ''
-                        }`}
-                      >
-                        Ganhos
-                      </Link>
-                    </>
-                  )}
+                  <Link
+                    to="/app/specialists"
+                    className={`text-gray-300 hover:text-white transition-colors ${
+                      location.pathname.includes('/app/specialists') || location.pathname.includes('/app/technicians') ? 'text-white font-medium' : ''
+                    }`}
+                  >
+                    Técnicos
+                  </Link>
+                  <Link
+                    to="/app/sessions"
+                    className={`text-gray-300 hover:text-white transition-colors ${
+                      isActive('/app/sessions') ? 'text-white font-medium' : ''
+                    }`}
+                  >
+                    Sessões
+                  </Link>
                   <Link
                     to="/app/subscription"
                     className={`text-gray-300 hover:text-white transition-colors ${
@@ -324,6 +300,7 @@ const Header: React.FC = () => {
                   </Link>
                 </>
               ) : isDashboard ? (
+                // Menu mobile unificado para todos os usuários
                 <>
                   <Link
                     to="/app/dashboard"
@@ -334,50 +311,24 @@ const Header: React.FC = () => {
                   >
                     Dashboard
                   </Link>
-                  {user.role === 'client' && (
-                    <>
-                      <Link
-                        to="/app/technicians"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/technicians') ? 'text-white font-medium' : ''
-                        }`}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        Técnicos
-                      </Link>
-                      <Link
-                        to="/app/sessions"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/sessions') ? 'text-white font-medium' : ''
-                        }`}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        Sessões
-                      </Link>
-                    </>
-                  )}
-                  {user.role === 'technician' && (
-                    <>
-                      <Link
-                        to="/app/sessions"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/sessions') ? 'text-white font-medium' : ''
-                        }`}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        Solicitações
-                      </Link>
-                      <Link
-                        to="/app/earnings"
-                        className={`text-gray-300 hover:text-white transition-colors ${
-                          isActive('/app/earnings') ? 'text-white font-medium' : ''
-                        }`}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        Ganhos
-                      </Link>
-                    </>
-                  )}
+                  <Link
+                    to="/app/specialists"
+                    className={`text-gray-300 hover:text-white transition-colors ${
+                      location.pathname.includes('/app/specialists') || location.pathname.includes('/app/technicians') ? 'text-white font-medium' : ''
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Técnicos
+                  </Link>
+                  <Link
+                    to="/app/sessions"
+                    className={`text-gray-300 hover:text-white transition-colors ${
+                      isActive('/app/sessions') ? 'text-white font-medium' : ''
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Sessões
+                  </Link>
                   <Link
                     to="/app/subscription"
                     className={`text-gray-300 hover:text-white transition-colors ${

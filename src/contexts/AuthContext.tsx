@@ -37,6 +37,10 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
   loading: boolean;
+  // Propriedades adicionais que outros componentes esperam
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
 }
 
 interface RegisterData {
@@ -46,6 +50,8 @@ interface RegisterData {
   phone?: string;
   company?: string;
   role?: UserRole;
+  specialties?: string[];
+  experience?: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,6 +71,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuthStatus();
@@ -102,6 +109,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      setError(null);
       const response = await api.post('/api/auth/login', {
         email,
         password
@@ -124,6 +132,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error: any) {
       console.error('Erro no login:', error);
       const message = error.response?.data?.message || error.message || 'Erro ao fazer login';
+      setError(message);
       toast.error(message);
       throw error;
     }
@@ -131,9 +140,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const register = async (userData: RegisterData) => {
     try {
+      setError(null);
+      
+      // Garantir que role seja do tipo correto
+      const roleValue = userData.role as UserRole || 'user';
+      
       const response = await api.post('/api/auth/register', {
         ...userData,
-        role: userData.role || 'user' // Default para 'user' se não especificado
+        role: roleValue
       });
 
       if (response.data.success) {
@@ -153,6 +167,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error: any) {
       console.error('Erro no cadastro:', error);
       const message = error.response?.data?.message || error.message || 'Erro ao fazer cadastro';
+      setError(message);
       toast.error(message);
       throw error;
     }
@@ -162,6 +177,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('token');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
+    setError(null);
     toast.info('Logout realizado com sucesso!');
   };
 
@@ -177,7 +193,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     updateUser,
-    loading
+    loading,
+    // Propriedades adicionais
+    isAuthenticated: !!user,
+    isLoading: loading,
+    error
   };
 
   return (

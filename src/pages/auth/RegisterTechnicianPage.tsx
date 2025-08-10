@@ -1,335 +1,266 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth, UserRole } from '../../contexts/AuthContext';
 import { toast } from 'react-toastify';
 
-const SPECIALTIES = [
-  'Elétrica',
-  'Hidráulica', 
-  'Motor',
-  'Transmissão',
-  'Sistemas Eletrônicos',
-  'Manutenção Preventiva'
-];
-
 const RegisterTechnicianPage: React.FC = () => {
+  const { register, error } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: '',
+    role: 'technician' as UserRole,
     specialties: [] as string[],
-    experience: '',
-    acceptTerms: false
+    experience: 0
   });
-  
-  const [loading, setLoading] = useState(false);
-  const { register, error } = useAuth();
-  const navigate = useNavigate();
+
+  const specialtyOptions = [
+    'Empilhadeira Elétrica',
+    'Combustão (GLP/Diesel)',
+    'Reach Truck',
+    'Paleteira Elétrica',
+    'Order Picker',
+    'Empilhadeira Lateral',
+    'Trilateral',
+    'Contrapeso'
+  ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      if (name === 'acceptTerms') {
-        setFormData({
-          ...formData,
-          [name]: checked
-        });
-      }
-    } else {
-      setFormData({
-        ...formData,
-        [name]: value
-      });
-    }
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'experience' ? parseInt(value) || 0 : value
+    }));
   };
 
   const handleSpecialtyChange = (specialty: string) => {
-    const isSelected = formData.specialties.includes(specialty);
-    
-    if (isSelected) {
-      setFormData({
-        ...formData,
-        specialties: formData.specialties.filter(s => s !== specialty)
-      });
-    } else {
-      setFormData({
-        ...formData,
-        specialties: [...formData.specialties, specialty]
-      });
-    }
+    setFormData(prev => ({
+      ...prev,
+      specialties: prev.specialties.includes(specialty)
+        ? prev.specialties.filter(s => s !== specialty)
+        : [...prev.specialties, specialty]
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validações
-    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
-      toast.error('Por favor, preencha todos os campos obrigatórios');
-      return;
-    }
-    
     if (formData.password !== formData.confirmPassword) {
       toast.error('As senhas não coincidem');
       return;
     }
-    
+
+    if (formData.password.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
     if (formData.specialties.length === 0) {
       toast.error('Selecione pelo menos uma especialidade');
       return;
     }
-    
-    if (!formData.experience || parseInt(formData.experience) < 0) {
-      toast.error('Informe sua experiência em anos');
-      return;
-    }
-    
-    if (!formData.acceptTerms) {
-      toast.error('Você precisa aceitar os termos de uso');
-      return;
-    }
-    
+
     setLoading(true);
     
     try {
-      // Registrar como técnico
       const userData = {
         name: formData.name,
         email: formData.email,
         password: formData.password,
         phone: formData.phone,
-        role: 'technician',
+        role: formData.role as UserRole, // Garantir tipo correto
         specialties: formData.specialties,
-        experience: parseInt(formData.experience)
+        experience: formData.experience
       };
-      
+
       await register(userData);
-      toast.success('Cadastro realizado! Aguarde aprovação do administrador.');
-      navigate('/auth/login');
-    } catch (err) {
-      console.error('Erro ao registrar:', err);
-      // O erro já será tratado pelo contexto de autenticação
+      navigate('/app/dashboard');
+    } catch (error) {
+      // Erro já tratado no AuthContext
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 className="text-2xl font-bold text-center">Cadastre-se como Técnico</h2>
-        <p className="text-gray-400 text-center mt-2">
-          Conecte-se com clientes que precisam de seus serviços
-        </p>
-      </div>
-      <div className="card-body">
-        {error && (
-          <div className="bg-red-900/30 border border-red-800 text-red-300 px-4 py-3 rounded mb-4">
-            {error}
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <div className="flex justify-center">
+            <div className="bg-primary-500 text-white w-12 h-12 rounded-lg flex items-center justify-center font-bold text-lg">
+              SC
+            </div>
           </div>
-        )}
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="name" className="block text-gray-300 mb-2">
-              Nome completo <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              className="input"
-              placeholder="Seu nome completo"
-              value={formData.name}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-gray-300 mb-2">
-              Email <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              className="input"
-              placeholder="seu@email.com"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          
-          <div className="mb-4">
-            <label htmlFor="phone" className="block text-gray-300 mb-2">
-              Telefone <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="tel"
-              id="phone"
-              name="phone"
-              className="input"
-              placeholder="(00) 00000-0000"
-              value={formData.phone}
-              onChange={handleChange}
-              required
-            />
-          </div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
+            Cadastro de Técnico
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-400">
+            Ou{' '}
+            <Link
+              to="/auth/login"
+              className="font-medium text-primary-500 hover:text-primary-400"
+            >
+              faça login na sua conta
+            </Link>
+          </p>
+        </div>
 
-          <div className="mb-4">
-            <label htmlFor="experience" className="block text-gray-300 mb-2">
-              Experiência (anos) <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              id="experience"
-              name="experience"
-              className="input"
-              placeholder="Ex: 5"
-              value={formData.experience}
-              onChange={handleChange}
-              min="0"
-              max="50"
-              required
-            />
-          </div>
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
 
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2">
-              Especialidades <span className="text-red-500">*</span>
-            </label>
-            <p className="text-gray-400 text-sm mb-3">Selecione suas áreas de especialização:</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {SPECIALTIES.map((specialty) => (
-                <div key={specialty} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id={`specialty-${specialty}`}
-                    checked={formData.specialties.includes(specialty)}
-                    onChange={() => handleSpecialtyChange(specialty)}
-                    className="w-4 h-4 bg-dark-300 border border-gray-700 rounded focus:ring-primary-500"
-                  />
-                  <label 
-                    htmlFor={`specialty-${specialty}`} 
-                    className="ml-2 text-gray-300 text-sm cursor-pointer"
-                  >
-                    {specialty}
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-300">
+                Nome completo
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                value={formData.name}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="Seu nome completo"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="seu@email.com"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-300">
+                Telefone
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                value={formData.phone}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="(11) 99999-9999"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="experience" className="block text-sm font-medium text-gray-300">
+                Anos de experiência
+              </label>
+              <input
+                id="experience"
+                name="experience"
+                type="number"
+                min="0"
+                max="50"
+                required
+                value={formData.experience}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Especialidades (selecione pelo menos uma)
+              </label>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {specialtyOptions.map((specialty) => (
+                  <label key={specialty} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.specialties.includes(specialty)}
+                      onChange={() => handleSpecialtyChange(specialty)}
+                      className="rounded border-gray-700 text-primary-500 focus:ring-primary-500 focus:ring-offset-gray-900"
+                    />
+                    <span className="ml-2 text-sm text-gray-300">{specialty}</span>
                   </label>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-            {formData.specialties.length > 0 && (
-              <div className="mt-2">
-                <p className="text-sm text-gray-400">
-                  Selecionadas: {formData.specialties.join(', ')}
-                </p>
-              </div>
-            )}
-          </div>
-          
-          <div className="mb-4">
-            <label htmlFor="password" className="block text-gray-300 mb-2">
-              Senha <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              className="input"
-              placeholder="••••••••"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              minLength={6}
-            />
-          </div>
-          
-          <div className="mb-6">
-            <label htmlFor="confirmPassword" className="block text-gray-300 mb-2">
-              Confirmar senha <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              name="confirmPassword"
-              className="input"
-              placeholder="••••••••"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              minLength={6}
-            />
-          </div>
-          
-          <div className="mb-6">
-            <div className="flex items-start">
-              <div className="flex items-center h-5">
-                <input
-                  id="acceptTerms"
-                  name="acceptTerms"
-                  type="checkbox"
-                  className="w-4 h-4 bg-dark-300 border border-gray-700 rounded focus:ring-primary-500"
-                  checked={formData.acceptTerms}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-              <div className="ml-3 text-sm">
-                <label htmlFor="acceptTerms" className="text-gray-300">
-                  Eu concordo com os <a href="#" className="text-primary-500 hover:text-primary-400">Termos de Serviço</a> e <a href="#" className="text-primary-500 hover:text-primary-400">Política de Privacidade</a>
-                </label>
-              </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                Senha
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="Mínimo 6 caracteres"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300">
+                Confirmar senha
+              </label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder="Confirme sua senha"
+              />
             </div>
           </div>
 
-          <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800 rounded">
-            <h4 className="text-blue-300 font-semibold mb-2">📋 Processo de Aprovação</h4>
-            <p className="text-blue-200 text-sm">
-              Após o cadastro, sua conta será analisada por nossa equipe. Você receberá um email quando for aprovado e poderá começar a atender clientes.
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-primary-500 hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Criando conta...' : 'Criar conta de técnico'}
+            </button>
+          </div>
+
+          <div className="text-center">
+            <p className="text-sm text-gray-400">
+              Ao criar uma conta, você concorda com nossos{' '}
+              <Link to="/terms" className="text-primary-500 hover:text-primary-400">
+                Termos de Uso
+              </Link>{' '}
+              e{' '}
+              <Link to="/privacy" className="text-primary-500 hover:text-primary-400">
+                Política de Privacidade
+              </Link>
             </p>
           </div>
-          
-          <button
-            type="submit"
-            className="btn btn-primary w-full"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Cadastrando...
-              </span>
-            ) : (
-              'Cadastrar como Técnico'
-            )}
-          </button>
         </form>
-      </div>
-      <div className="card-footer text-center">
-        <p className="text-gray-400">
-          Já tem uma conta?{' '}
-          <Link to="/auth/login" className="text-primary-500 hover:text-primary-400">
-            Entrar
-          </Link>
-        </p>
-        <p className="text-gray-400 mt-2">
-          É um cliente?{' '}
-          <Link to="/auth/register" className="text-primary-500 hover:text-primary-400">
-            Cadastre-se como cliente
-          </Link>
-        </p>
       </div>
     </div>
   );
 };
 
 export default RegisterTechnicianPage;
-

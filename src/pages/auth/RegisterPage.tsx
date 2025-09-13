@@ -13,7 +13,7 @@ const RegisterPage: React.FC = () => {
     password: '',
     confirmPassword: '',
     phone: '',
-    role: 'user' as UserRole
+    role: 'CLIENT' as UserRole
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -133,23 +133,6 @@ const RegisterPage: React.FC = () => {
                 className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="(11) 99999-9999"
               />
-            </div>
-
-            <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-300">
-                Tipo de conta
-              </label>
-              <select
-                id="role"
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="user">Usuário</option>
-                <option value="client">Cliente</option>
-                <option value="technician">Técnico</option>
-              </select>
             </div>
 
             <div>

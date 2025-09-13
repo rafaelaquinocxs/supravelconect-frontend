@@ -1,210 +1,187 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, Star, MapPin, Clock, DollarSign, Users, Award, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../../services/api';
 
-interface Technician {
+interface ServiceProvider {
   id: string;
   name: string;
-  avatar?: string;
-  specialty: string;
-  subSpecialties: string[];
+  email: string;
+  profileImage?: string;
   rating: number;
-  totalSessions: number;
-  isOnline: boolean;
-  hourlyRate: number;
-  responseTime: string;
-  description: string;
-  experience: number;
-  certifications: string[];
-  location: string;
+  serviceProvider?: {
+    specialties: string[];
+    subSpecialties: string[];
+    hourlyRate: number;
+    experience: number;
+    description: string;
+    isAvailable: boolean;
+    location: string;
+    responseTime: string;
+    completedJobs: number;
+    certifications: string[];
+  };
 }
 
-const FORKLIFT_CATEGORIES = [
-  { id: 'all', name: 'Todas as Categorias', icon: '🏭' },
-  { id: 'eletrica', name: 'Empilhadeira Elétrica', icon: '⚡' },
-  { id: 'combustao', name: 'Combustão (GLP/Diesel)', icon: '⛽' },
-  { id: 'reach', name: 'Reach Truck', icon: '📏' },
-  { id: 'paleteira', name: 'Paleteira Elétrica', icon: '📦' },
-  { id: 'order-picker', name: 'Order Picker', icon: '📋' },
-  { id: 'lateral', name: 'Empilhadeira Lateral', icon: '↔️' },
-  { id: 'trilateral', name: 'Trilateral', icon: '🔄' },
-  { id: 'contrapeso', name: 'Contrapeso', icon: '⚖️' }
-];
+interface Specialty {
+  id: string;
+  name: string;
+  description: string;
+}
 
 const TechnicianListPage: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [filteredTechnicians, setFilteredTechnicians] = useState<Technician[]>([]);
+  
+  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>([]);
+  const [filteredProviders, setFilteredProviders] = useState<ServiceProvider[]>([]);
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  
+  // Filtros
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'price' | 'experience'>('rating');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortBy, setSortBy] = useState('rating');
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
 
   useEffect(() => {
-    fetchTechnicians();
+    fetchServiceProviders();
+    fetchSpecialties();
   }, []);
 
   useEffect(() => {
-    filterTechnicians();
-  }, [technicians, selectedCategory, searchTerm, sortBy, showOnlineOnly]);
+    filterProviders();
+  }, [serviceProviders, searchTerm, selectedCategory, sortBy, showOnlineOnly]);
 
-  const fetchTechnicians = async () => {
+  const fetchServiceProviders = async () => {
     try {
-      const response = await api.get('/api/technicians');
-      setTechnicians(response.data.data);
-    } catch (error) {
-      console.error('Erro ao buscar técnicos:', error);
+      console.log('🔍 Buscando prestadores de serviços...');
       
-      // Dados mockados específicos para empilhadeiras
-      setTechnicians([
-        {
-          id: '1',
-          name: 'João Silva',
-          specialty: 'eletrica',
-          subSpecialties: ['Bateria', 'Sistema elétrico', 'Carregador'],
-          rating: 4.9,
-          totalSessions: 234,
-          isOnline: true,
-          hourlyRate: 85,
-          responseTime: '< 5 min',
-          description: 'Especialista em empilhadeiras elétricas com 8 anos de experiência. Foco em sistemas de bateria e eletrônica.',
-          experience: 8,
-          certifications: ['Toyota', 'Hyster', 'Crown'],
-          location: 'São Paulo, SP'
-        },
-        {
-          id: '2',
-          name: 'Maria Santos',
-          specialty: 'combustao',
-          subSpecialties: ['Motor diesel', 'Sistema GLP', 'Transmissão'],
-          rating: 4.8,
-          totalSessions: 189,
-          isOnline: true,
-          hourlyRate: 90,
-          responseTime: '< 10 min',
-          description: 'Técnica especializada em empilhadeiras a combustão. Experiência com motores diesel e GLP.',
-          experience: 12,
-          certifications: ['Caterpillar', 'Komatsu', 'Mitsubishi'],
-          location: 'Rio de Janeiro, RJ'
-        },
-        {
-          id: '3',
-          name: 'Carlos Oliveira',
-          specialty: 'reach',
-          subSpecialties: ['Mastro telescópico', 'Sistema hidráulico', 'Direção'],
-          rating: 4.7,
-          totalSessions: 156,
-          isOnline: false,
-          hourlyRate: 95,
-          responseTime: '< 15 min',
-          description: 'Especialista em Reach Trucks e equipamentos de armazém. Foco em sistemas hidráulicos complexos.',
-          experience: 10,
-          certifications: ['Raymond', 'Crown', 'Yale'],
-          location: 'Belo Horizonte, MG'
-        },
-        {
-          id: '4',
-          name: 'Ana Costa',
-          specialty: 'paleteira',
-          subSpecialties: ['Motor elétrico', 'Sistema de elevação', 'Controles'],
-          rating: 4.6,
-          totalSessions: 98,
-          isOnline: true,
-          hourlyRate: 75,
-          responseTime: '< 8 min',
-          description: 'Técnica em paleteiras elétricas e equipamentos de movimentação leve.',
-          experience: 6,
-          certifications: ['BT', 'Linde', 'Still'],
-          location: 'Curitiba, PR'
-        },
-        {
-          id: '5',
-          name: 'Roberto Lima',
-          specialty: 'order-picker',
-          subSpecialties: ['Plataforma elevadora', 'Sistema de segurança', 'Controles'],
-          rating: 4.8,
-          totalSessions: 142,
-          isOnline: true,
-          hourlyRate: 100,
-          responseTime: '< 12 min',
-          description: 'Especialista em Order Pickers e equipamentos de altura. Foco em segurança e sistemas de elevação.',
-          experience: 9,
-          certifications: ['Crown', 'Raymond', 'Jungheinrich'],
-          location: 'Porto Alegre, RS'
-        },
-        {
-          id: '6',
-          name: 'Fernanda Rocha',
-          specialty: 'lateral',
-          subSpecialties: ['Sistema lateral', 'Mastro multidirecional', 'Hidráulica'],
-          rating: 4.5,
-          totalSessions: 87,
-          isOnline: false,
-          hourlyRate: 110,
-          responseTime: '< 20 min',
-          description: 'Técnica especializada em empilhadeiras laterais e multidirecionais para cargas longas.',
-          experience: 7,
-          certifications: ['Combilift', 'Hubtex', 'Baumann'],
-          location: 'Salvador, BA'
-        }
-      ]);
+      const response = await api.get('/api/service-providers');
+      console.log('✅ Resposta completa da API:', response);
+      console.log('✅ response.data:', response.data);
+      console.log('✅ response.data.data:', response.data.data);
+      console.log('✅ É array?', Array.isArray(response.data.data));
+      
+      if (response.data.success && Array.isArray(response.data.data)) {
+        console.log('✅ Definindo serviceProviders:', response.data.data);
+        setServiceProviders(response.data.data);
+      } else if (response.data.data && Array.isArray(response.data.data.providers)) {
+        console.log('✅ Usando response.data.data.providers:', response.data.data.providers);
+        setServiceProviders(response.data.data.providers);
+      } else if (Array.isArray(response.data.providers)) {
+        console.log('✅ Usando response.data.providers:', response.data.providers);
+        setServiceProviders(response.data.providers);
+      } else {
+        console.log('⚠️ Estrutura de dados não reconhecida, definindo array vazio');
+        setServiceProviders([]);
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar prestadores:', error);
+      setServiceProviders([]);
+      toast.error('Erro ao carregar especialistas');
     } finally {
       setLoading(false);
     }
   };
 
-  const filterTechnicians = () => {
-    let filtered = [...technicians];
+  const fetchSpecialties = async () => {
+    try {
+      const response = await api.get('/api/service-providers/specialties');
+      if (response.data.success) {
+        setSpecialties(response.data.data);
+      }
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar especialidades:', error);
+    }
+  };
 
-    // Filtro por categoria
+  const filterProviders = () => {
+    console.log('🔄 Filtrando providers. serviceProviders:', serviceProviders);
+    console.log('🔄 serviceProviders.length:', serviceProviders?.length);
+    
+    // ✅ CORREÇÃO: Verificar se serviceProviders é um array antes de usar
+    if (!Array.isArray(serviceProviders)) {
+      console.warn('⚠️ serviceProviders não é um array:', serviceProviders);
+      setFilteredProviders([]);
+      return;
+    }
+
+    let filtered = [...serviceProviders];
+    console.log('🔄 Filtered inicial:', filtered);
+
+    // Filtro por categoria/especialidade
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(tech => tech.specialty === selectedCategory);
+      const selectedSpec = specialties.find(spec => spec.id === selectedCategory);
+      if (selectedSpec) {
+        filtered = filtered.filter(provider => {
+          const specialties = provider.serviceProvider?.specialties || [];
+          const subSpecialties = provider.serviceProvider?.subSpecialties || [];
+          
+          return specialties.some(spec => 
+            spec && spec.toLowerCase().includes(selectedSpec.name.toLowerCase())
+          ) || subSpecialties.some(spec => 
+            spec && spec.toLowerCase().includes(selectedSpec.name.toLowerCase())
+          );
+        });
+      }
     }
 
     // Filtro por termo de busca
     if (searchTerm) {
-      filtered = filtered.filter(tech =>
-        tech.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tech.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        tech.subSpecialties.some(spec => 
-          spec.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      );
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(provider => {
+        const name = provider.name || '';
+        const description = provider.serviceProvider?.description || '';
+        const specialties = provider.serviceProvider?.specialties || [];
+        const subSpecialties = provider.serviceProvider?.subSpecialties || [];
+        
+        return name.toLowerCase().includes(term) ||
+               description.toLowerCase().includes(term) ||
+               specialties.some(spec => spec?.toLowerCase().includes(term)) ||
+               subSpecialties.some(spec => spec?.toLowerCase().includes(term));
+      });
     }
 
-    // Filtro por online
+    // Filtro por disponibilidade online
     if (showOnlineOnly) {
-      filtered = filtered.filter(tech => tech.isOnline);
+      filtered = filtered.filter(provider => 
+        provider.serviceProvider?.isAvailable === true
+      );
     }
 
     // Ordenação
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'rating':
-          return b.rating - a.rating;
+          return (b.rating || 0) - (a.rating || 0);
         case 'price':
-          return a.hourlyRate - b.hourlyRate;
+          return (a.serviceProvider?.hourlyRate || 0) - (b.serviceProvider?.hourlyRate || 0);
         case 'experience':
-          return b.experience - a.experience;
+          return (b.serviceProvider?.experience || 0) - (a.serviceProvider?.experience || 0);
         default:
           return 0;
       }
     });
 
-    setFilteredTechnicians(filtered);
+    console.log('✅ Filtered final:', filtered);
+    console.log('✅ Definindo filteredProviders com', filtered.length, 'items');
+    setFilteredProviders(filtered);
   };
 
-  const handleScheduleSession = (technicianId: string) => {
-    // Redirecionar para página de agendamento com técnico pré-selecionado
-    window.location.href = `/app/schedule?technician=${technicianId}`;
-  };
-
-  const getCategoryName = (categoryId: string) => {
-    const category = FORKLIFT_CATEGORIES.find(cat => cat.id === categoryId);
-    return category ? category.name : categoryId;
+  // ✅ CORREÇÃO: Navegar para ScheduleSessionPage em vez de fazer POST direto
+  const handleScheduleSession = (providerId: string, providerName: string) => {
+    console.log('📅 Navegando para agendamento detalhado:', { providerId, providerName });
+    
+    // Navegar para página de agendamento detalhado
+    navigate(`/app/sessions/schedule/${providerId}`, {
+      state: { 
+        providerName,
+        providerId 
+      }
+    });
   };
 
   if (loading) {
@@ -219,52 +196,47 @@ const TechnicianListPage: React.FC = () => {
     <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Especialistas em Empilhadeiras</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">
+          Especialistas em Manutenção
+        </h1>
         <p className="text-gray-400">
-          Encontre o especialista ideal para resolver problemas em sua empilhadeira
+          Encontre o especialista ideal para resolver problemas em sua manutenção
         </p>
       </div>
 
       {/* Filtros */}
-      <div className="bg-gray-800 rounded-lg p-6 mb-8 border border-gray-700">
-        {/* Categorias */}
-        <div className="mb-6">
-          <h3 className="text-white font-medium mb-4">Categoria da Empilhadeira</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {FORKLIFT_CATEGORIES.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => setSelectedCategory(category.id)}
-                className={`p-3 rounded-lg border transition-colors text-left ${
-                  selectedCategory === category.id
-                    ? 'bg-primary-500 border-primary-500 text-white'
-                    : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{category.icon}</span>
-                  <span className="text-sm font-medium">{category.name}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Busca e Filtros */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-2">
+          {/* Busca */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
               placeholder="Buscar por nome, especialidade ou problema..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
             />
           </div>
-          
+
+          {/* Categoria */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+          >
+            <option value="all">Todas as especialidades</option>
+            {specialties.map((specialty) => (
+              <option key={specialty.id} value={specialty.id}>
+                {specialty.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Ordenação */}
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary-500"
           >
             <option value="rating">Melhor avaliação</option>
@@ -272,6 +244,7 @@ const TechnicianListPage: React.FC = () => {
             <option value="experience">Mais experiência</option>
           </select>
 
+          {/* Filtro Online */}
           <label className="flex items-center space-x-2 text-white">
             <input
               type="checkbox"
@@ -284,148 +257,125 @@ const TechnicianListPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Lista de Técnicos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredTechnicians.map((technician) => (
-          <div key={technician.id} className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+      {/* Lista de Prestadores */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {filteredProviders.map((provider) => (
+          <div
+            key={provider.id}
+            className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:border-gray-600 transition-colors"
+          >
             {/* Header do Card */}
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">
-                    {technician.name.charAt(0)}
-                  </span>
+                <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                  {provider.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="text-white font-semibold text-lg">{technician.name}</h3>
-                  <p className="text-gray-400">{getCategoryName(technician.specialty)}</p>
+                  <h3 className="text-xl font-semibold text-white">{provider.name}</h3>
                   <div className="flex items-center space-x-2 mt-1">
-                    <span className={`w-2 h-2 rounded-full ${technician.isOnline ? 'bg-green-400' : 'bg-gray-400'}`}></span>
-                    <span className={`text-sm ${technician.isOnline ? 'text-green-400' : 'text-gray-400'}`}>
-                      {technician.isOnline ? 'Online' : 'Offline'}
+                    <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                    <span className="text-white font-medium">{provider.rating.toFixed(1)}</span>
+                    <span className="text-gray-400">
+                      ({provider.serviceProvider?.completedJobs || 0})
                     </span>
-                    <span className="text-gray-400 text-sm">• {technician.responseTime}</span>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-primary-400 font-medium">
+                      R$ {provider.serviceProvider?.hourlyRate || 150} /hora
+                    </span>
                   </div>
                 </div>
               </div>
               
-              <div className="text-right">
-                <div className="flex items-center space-x-1 mb-1">
-                  <span className="text-yellow-400">★</span>
-                  <span className="text-white font-medium">{technician.rating}</span>
-                  <span className="text-gray-400 text-sm">({technician.totalSessions})</span>
+              {provider.serviceProvider?.isAvailable && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                  <span className="text-green-400 text-sm font-medium">On-line</span>
+                  <span className="text-gray-400 text-sm">
+                    • {provider.serviceProvider?.responseTime || '24h'}
+                  </span>
                 </div>
-                <div className="text-primary-400 font-semibold">
-                  R$ {technician.hourlyRate}/hora
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Descrição */}
-            <p className="text-gray-300 text-sm mb-4">{technician.description}</p>
+            <p className="text-gray-300 mb-4">
+              {provider.serviceProvider?.description || 'Descrição não informada'}
+            </p>
 
             {/* Especialidades */}
             <div className="mb-4">
-              <h4 className="text-white font-medium text-sm mb-2">Especialidades:</h4>
+              <h4 className="text-white font-medium mb-2">Especialidades:</h4>
               <div className="flex flex-wrap gap-2">
-                {technician.subSpecialties.map((specialty, index) => (
+                {(provider.serviceProvider?.specialties || []).slice(0, 3).map((specialty, index) => (
                   <span
                     key={index}
-                    className="bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs"
+                    className="bg-gray-700 text-gray-300 px-3 py-1 rounded-full text-sm"
                   >
                     {specialty}
                   </span>
                 ))}
-              </div>
-            </div>
-
-            {/* Certificações */}
-            <div className="mb-4">
-              <h4 className="text-white font-medium text-sm mb-2">Certificações:</h4>
-              <div className="flex flex-wrap gap-2">
-                {technician.certifications.map((cert, index) => (
-                  <span
-                    key={index}
-                    className="bg-primary-900/30 text-primary-300 px-2 py-1 rounded text-xs border border-primary-800"
-                  >
-                    {cert}
+                {(provider.serviceProvider?.specialties || []).length > 3 && (
+                  <span className="text-gray-400 text-sm">
+                    + {(provider.serviceProvider?.specialties || []).length - 3} mais
                   </span>
-                ))}
+                )}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-              <div className="text-sm text-gray-400">
-                <span>{technician.experience} anos • {technician.location}</span>
+            {/* Informações Adicionais */}
+            <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
+              <div className="flex items-center space-x-2 text-gray-400">
+                <Award className="w-4 h-4" />
+                <span>{provider.serviceProvider?.experience || 0} anos</span>
               </div>
-              
-              <div className="flex space-x-2">
-                <Link
-                  to={`/app/specialists/${technician.id}`}
-                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors text-sm"
-                >
-                  Ver Perfil
-                </Link>
-                <button
-                  onClick={() => handleScheduleSession(technician.id)}
-                  className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-                  disabled={!technician.isOnline}
-                >
-                  {technician.isOnline ? 'Agendar Sessão' : 'Indisponível'}
-                </button>
+              <div className="flex items-center space-x-2 text-gray-400">
+                <MapPin className="w-4 h-4" />
+                <span>{provider.serviceProvider?.location || 'Caxias do Sul'}</span>
               </div>
             </div>
+
+            {/* Botão de Ação */}
+            <button
+              onClick={() => handleScheduleSession(provider.id, provider.name)}
+              className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-lg transition-colors font-medium"
+            >
+              Agendar Sessão
+            </button>
           </div>
         ))}
       </div>
 
-      {/* Estado vazio */}
-      {filteredTechnicians.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-gray-400 text-lg mb-4">
-            Nenhum especialista encontrado
-          </div>
-          <p className="text-gray-500 mb-6">
-            Tente ajustar os filtros ou buscar por outros termos
-          </p>
-          <button
-            onClick={() => {
-              setSelectedCategory('all');
-              setSearchTerm('');
-              setShowOnlineOnly(false);
-            }}
-            className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-2 rounded-lg"
-          >
-            Limpar Filtros
-          </button>
-        </div>
-      )}
-
       {/* Estatísticas */}
-      <div className="mt-8 bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold text-white">{technicians.length}</div>
-            <div className="text-gray-400 text-sm">Especialistas</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-green-400">
-              {technicians.filter(t => t.isOnline).length}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <h2 className="text-2xl font-bold text-white mb-6">Estatísticas</h2>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-white mb-2">
+              {filteredProviders.length}
             </div>
-            <div className="text-gray-400 text-sm">Online agora</div>
+            <div className="text-gray-400">Especialistas</div>
           </div>
-          <div>
-            <div className="text-2xl font-bold text-yellow-400">
-              {(technicians.reduce((acc, t) => acc + t.rating, 0) / technicians.length).toFixed(1)}
+          
+          <div className="text-center">
+            <div className="text-3xl font-bold text-green-400 mb-2">
+              {filteredProviders.filter(p => p.serviceProvider?.isAvailable).length}
             </div>
-            <div className="text-gray-400 text-sm">Avaliação média</div>
+            <div className="text-gray-400">Agora online</div>
           </div>
-          <div>
-            <div className="text-2xl font-bold text-primary-400">
-              {technicians.reduce((acc, t) => acc + t.totalSessions, 0)}
+          
+          <div className="text-center">
+            <div className="text-3xl font-bold text-yellow-400 mb-2">
+              {specialties.length}
             </div>
-            <div className="text-gray-400 text-sm">Sessões realizadas</div>
+            <div className="text-gray-400">Especialidades</div>
+          </div>
+          
+          <div className="text-center">
+            <div className="text-3xl font-bold text-red-400 mb-2">
+              {filteredProviders.reduce((total, p) => total + (p.serviceProvider?.completedJobs || 0), 0)}
+            </div>
+            <div className="text-gray-400">Sessões realizadas</div>
           </div>
         </div>
       </div>

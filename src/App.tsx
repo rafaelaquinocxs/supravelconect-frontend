@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
@@ -17,6 +16,8 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import TechnicianListPage from './pages/technicians/TechnicianListPage';
 import TechnicianDetailPage from './pages/technicians/TechnicianDetailPage';
 import SessionPage from './pages/sessions/SessionPage';
+import SessionDetailPage from './pages/sessions/SessionDetailPage'; // ← ADICIONADO
+import ScheduleSessionPage from './pages/sessions/ScheduleSessionPage'; // ← ADICIONADO
 import VideoCallPage from './pages/sessions/VideoCallPage';
 import SubscriptionPage from './pages/subscriptions/SubscriptionPage';
 import ProfilePage from './pages/profile/ProfilePage';
@@ -82,10 +83,14 @@ function App() {
               <Route path="specialists" element={<TechnicianListPage />} />
               <Route path="specialists/:id" element={<TechnicianDetailPage />} />
               
+              {/* ==================== ROTAS DE SESSÕES COMPLETAS ==================== */}
+              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="sessions/:id" element={<SessionDetailPage />} /> {/* ← NOVA ROTA */}
+              <Route path="sessions/schedule/:technicianId" element={<ScheduleSessionPage />} /> {/* ← NOVA ROTA */}
+              
               {/* NOVAS ROTAS FUNCIONANDO */}
               <Route path="schedule" element={<SchedulePage />} />
               <Route path="credits" element={<CreditsPage />} />
-              <Route path="sessions" element={<SessionsPage />} />
               
               {/* ROTAS EXISTENTES */}
               <Route path="subscription" element={<SubscriptionPage />} />

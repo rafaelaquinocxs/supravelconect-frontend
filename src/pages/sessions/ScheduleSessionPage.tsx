@@ -1,236 +1,178 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { 
+  ArrowLeft, 
+  Calendar, 
+  Clock, 
+  DollarSign, 
+  AlertCircle, 
+  User, 
+  FileText, 
+  Settings,
+  CheckCircle,
+  Star
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { toast } from 'react-toastify';
 import api from '../../services/api';
 
-// Interfaces
-interface Technician {
+interface ServiceProvider {
   id: string;
   name: string;
-  specialties: string[];
-  rating: number;
-  hourlyRate: number;
-  responseTime: string;
-  bio: string;
+  email: string;
   profileImage?: string;
-}
-
-interface TimeSlot {
-  time: string;
-  available: boolean;
-}
-
-interface ScheduleData {
-  technicianId: string;
-  date: string;
-  time: string;
-  duration: number;
-  issue: string;
-  specialty: string;
-  urgency: 'low' | 'medium' | 'high';
-  description: string;
-  estimatedCost: number;
+  rating: number;
+  serviceProvider?: {
+    specialties: string[];
+    subSpecialties: string[];
+    hourlyRate: number;
+    experience: number;
+    description: string;
+    isAvailable: boolean;
+    location: string;
+    responseTime: string;
+    completedJobs: number;
+  };
 }
 
 const ScheduleSessionPage: React.FC = () => {
   const { technicianId } = useParams<{ technicianId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
-  
-  const [technician, setTechnician] = useState<Technician | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
-  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
+
+  // Estados do formulário
+  const [provider, setProvider] = useState<ServiceProvider | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  
-  const [scheduleData, setScheduleData] = useState<ScheduleData>({
-    technicianId: technicianId || '',
-    date: '',
-    time: '',
-    duration: 60,
-    issue: '',
-    specialty: '',
-    urgency: 'medium',
+
+  // Dados do formulário
+  const [formData, setFormData] = useState({
+    title: '',
     description: '',
-    estimatedCost: 0
+    specialty: '',
+    urgency: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH',
+    scheduledDate: '',
+    scheduledTime: '',
+    estimatedDuration: 60,
+    issue: '',
+    location: '',
+    contactPreference: 'video' as 'video' | 'phone' | 'chat',
+    additionalNotes: '',
+    budget: 0
   });
 
-  const specialtyOptions = [
-    'Elétrica',
-    'Hidráulica',
-    'Motor',
-    'Transmissão',
-    'Sistemas Eletrônicos',
-    'Manutenção Preventiva'
-  ];
-
-  const durationOptions = [
-    { value: 30, label: '30 minutos', multiplier: 0.5 },
-    { value: 60, label: '1 hora', multiplier: 1 },
-    { value: 90, label: '1h 30min', multiplier: 1.5 },
-    { value: 120, label: '2 horas', multiplier: 2 },
-    { value: 180, label: '3 horas', multiplier: 3 }
-  ];
-
+  // Carregar dados do técnico
   useEffect(() => {
+    const fetchProvider = async () => {
+      try {
+        console.log('🔍 Carregando dados do técnico:', technicianId);
+        
+        const response = await api.get(`/api/service-providers/${technicianId}`);
+        
+        if (response.data.success) {
+          const providerData = response.data.data;
+          setProvider(providerData);
+          
+          // Pré-preencher alguns campos
+          setFormData(prev => ({
+            ...prev,
+            specialty: providerData.serviceProvider?.specialties?.[0] || '',
+            budget: providerData.serviceProvider?.hourlyRate || 150
+          }));
+        }
+      } catch (error: any) {
+        console.error('❌ Erro ao carregar técnico:', error);
+        toast.error('Erro ao carregar dados do especialista');
+        navigate('/app/specialists');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (technicianId) {
-      fetchTechnicianData();
+      fetchProvider();
     }
-  }, [technicianId]);
+  }, [technicianId, navigate]);
 
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAvailableSlots();
-    }
-  }, [selectedDate, technicianId]);
-
-  useEffect(() => {
-    calculateEstimatedCost();
-  }, [scheduleData.duration, technician]);
-
-  const fetchTechnicianData = async () => {
-    try {
-      // Simular dados do técnico (substituir por API real)
-      const mockTechnician: Technician = {
-        id: technicianId || '',
-        name: 'João Silva',
-        specialties: ['Elétrica', 'Sistemas Eletrônicos'],
-        rating: 4.9,
-        hourlyRate: 85,
-        responseTime: '< 5 min',
-        bio: 'Especialista em sistemas elétricos com mais de 10 anos de experiência em empilhadeiras e equipamentos industriais.'
-      };
-      
-      setTechnician(mockTechnician);
-      setScheduleData(prev => ({
-        ...prev,
-        specialty: mockTechnician.specialties[0]
-      }));
-      
-    } catch (error) {
-      console.error('Erro ao carregar dados do técnico:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAvailableSlots = async () => {
-    try {
-      // Simular horários disponíveis (substituir por API real)
-      const mockSlots: TimeSlot[] = [
-        { time: '08:00', available: true },
-        { time: '08:30', available: true },
-        { time: '09:00', available: false },
-        { time: '09:30', available: true },
-        { time: '10:00', available: true },
-        { time: '10:30', available: false },
-        { time: '11:00', available: true },
-        { time: '11:30', available: true },
-        { time: '13:00', available: true },
-        { time: '13:30', available: false },
-        { time: '14:00', available: true },
-        { time: '14:30', available: true },
-        { time: '15:00', available: true },
-        { time: '15:30', available: false },
-        { time: '16:00', available: true },
-        { time: '16:30', available: true },
-        { time: '17:00', available: true },
-        { time: '17:30', available: false }
-      ];
-      
-      setAvailableSlots(mockSlots);
-      
-    } catch (error) {
-      console.error('Erro ao carregar horários:', error);
-    }
-  };
-
-  const calculateEstimatedCost = () => {
-    if (!technician) return;
-    
-    const duration = scheduleData.duration;
-    const hourlyRate = technician.hourlyRate;
-    const hours = duration / 60;
-    const cost = hours * hourlyRate;
-    
-    setScheduleData(prev => ({
-      ...prev,
-      estimatedCost: cost
-    }));
-  };
-
-  const handleInputChange = (field: keyof ScheduleData, value: any) => {
-    setScheduleData(prev => ({
+  // Atualizar campos do formulário
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({
       ...prev,
       [field]: value
     }));
   };
 
-  const handleDateChange = (date: string) => {
-    setSelectedDate(date);
-    setSelectedTime('');
-    setScheduleData(prev => ({
-      ...prev,
-      date,
-      time: ''
-    }));
+  // Calcular custo estimado
+  const calculateEstimatedCost = () => {
+    const hourlyRate = provider?.serviceProvider?.hourlyRate || 150;
+    const hours = formData.estimatedDuration / 60;
+    return hourlyRate * hours;
   };
 
-  const handleTimeSelect = (time: string) => {
-    setSelectedTime(time);
-    setScheduleData(prev => ({
-      ...prev,
-      time
-    }));
-  };
-
-  const getMinDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  };
-
-  const getMaxDate = () => {
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + 30); // 30 dias no futuro
-    return maxDate.toISOString().split('T')[0];
-  };
-
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'high': return 'border-red-500 bg-red-500/10';
-      case 'medium': return 'border-yellow-500 bg-yellow-500/10';
-      case 'low': return 'border-green-500 bg-green-500/10';
-      default: return 'border-gray-500 bg-gray-500/10';
-    }
-  };
-
+  // Submeter formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!scheduleData.date || !scheduleData.time || !scheduleData.issue || !scheduleData.description) {
-      alert('Por favor, preencha todos os campos obrigatórios.');
+    if (!provider || !user) return;
+
+    // Validações
+    if (!formData.title.trim()) {
+      toast.error('Por favor, informe um título para a sessão');
       return;
     }
-    
+
+    if (!formData.description.trim()) {
+      toast.error('Por favor, descreva o problema');
+      return;
+    }
+
+    if (!formData.issue.trim()) {
+      toast.error('Por favor, detalhe o problema técnico');
+      return;
+    }
+
+    if (!formData.scheduledDate) {
+      toast.error('Por favor, selecione uma data');
+      return;
+    }
+
+    if (!formData.scheduledTime) {
+      toast.error('Por favor, selecione um horário');
+      return;
+    }
+
     setSubmitting(true);
-    
+
     try {
-      const response = await api.post('/api/sessions/schedule', {
-        ...scheduleData,
-        clientId: user?.id
-      });
-      
+      console.log('📅 Criando agendamento:', formData);
+
+      const sessionData = {
+        technicianId: provider.id,
+        title: formData.title,
+        description: formData.description,
+        specialty: formData.specialty,
+        urgency: formData.urgency,
+        scheduledDate: formData.scheduledDate,
+        scheduledTime: formData.scheduledTime,
+        estimatedDuration: formData.estimatedDuration,
+        issue: formData.issue,
+        hourlyRate: provider.serviceProvider?.hourlyRate || 150,
+        estimatedCost: calculateEstimatedCost(),
+        location: formData.location,
+        contactPreference: formData.contactPreference,
+        additionalNotes: formData.additionalNotes
+      };
+
+      const response = await api.post('/api/sessions/schedule', sessionData);
+
       if (response.data.success) {
-        alert('Sessão agendada com sucesso! O técnico será notificado.');
-        navigate('/app/sessions');
-      } else {
-        throw new Error(response.data.message || 'Erro ao agendar sessão');
+        toast.success('Sessão agendada com sucesso!');
+        navigate('/app/dashboard');
       }
-      
     } catch (error: any) {
-      console.error('Erro ao agendar sessão:', error);
-      alert(error.response?.data?.message || 'Erro ao agendar sessão. Tente novamente.');
+      console.error('❌ Erro ao agendar sessão:', error);
+      toast.error(error.response?.data?.message || 'Erro ao agendar sessão');
     } finally {
       setSubmitting(false);
     }
@@ -238,19 +180,24 @@ const ScheduleSessionPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
       </div>
     );
   }
 
-  if (!technician) {
+  if (!provider) {
     return (
-      <div className="container-custom py-8">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-white mb-4">Técnico não encontrado</h2>
-          <button onClick={() => navigate('/app/technicians')} className="btn btn-primary">
-            Voltar à busca
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-12">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Especialista não encontrado</h2>
+          <p className="text-gray-400 mb-6">O especialista que você está procurando não existe.</p>
+          <button
+            onClick={() => navigate('/app/specialists')}
+            className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-2 rounded-lg"
+          >
+            Voltar para Especialistas
           </button>
         </div>
       </div>
@@ -258,324 +205,297 @@ const ScheduleSessionPage: React.FC = () => {
   }
 
   return (
-    <div className="container-custom py-8">
+    <div className="max-w-4xl mx-auto p-6">
       {/* Header */}
-      <div className="mb-8">
+      <div className="flex items-center space-x-4 mb-8">
         <button
-          onClick={() => navigate('/app/technicians')}
-          className="text-gray-400 hover:text-white mb-4 flex items-center"
+          onClick={() => navigate('/app/specialists')}
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Voltar à busca
+          <ArrowLeft className="w-6 h-6" />
         </button>
-        
-        <h1 className="text-3xl font-bold mb-2 text-white">
-          Agendar Sessão
-        </h1>
-        <p className="text-gray-300">
-          Agende uma sessão de suporte técnico com {technician.name}
-        </p>
+        <div>
+          <h1 className="text-3xl font-bold text-white">Agendar Sessão</h1>
+          <p className="text-gray-400">Forneça detalhes sobre o problema para o especialista</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Form */}
+        {/* Formulário Principal */}
         <div className="lg:col-span-2">
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Problem Description */}
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Descrição do Problema</h2>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Informações Básicas */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Informações da Sessão
+              </h2>
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Especialidade Necessária *
-                  </label>
-                  <select
-                    value={scheduleData.specialty}
-                    onChange={(e) => handleInputChange('specialty', e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
-                    required
-                  >
-                    {specialtyOptions.map((specialty) => (
-                      <option key={specialty} value={specialty}>
-                        {specialty}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Resumo do Problema *
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Título da Sessão *
                   </label>
                   <input
                     type="text"
-                    value={scheduleData.issue}
-                    onChange={(e) => handleInputChange('issue', e.target.value)}
-                    placeholder="Ex: Empilhadeira não liga após manutenção"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                    value={formData.title}
+                    onChange={(e) => handleInputChange('title', e.target.value)}
+                    placeholder="Ex: Manutenção preventiva do ar condicionado"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Descrição Detalhada *
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Descrição Geral *
                   </label>
                   <textarea
-                    value={scheduleData.description}
+                    value={formData.description}
                     onChange={(e) => handleInputChange('description', e.target.value)}
-                    placeholder="Descreva o problema em detalhes, incluindo quando começou, sintomas observados, tentativas de solução, etc."
-                    rows={4}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                    placeholder="Descreva brevemente o que precisa ser feito..."
+                    rows={3}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
                     required
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Urgência
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { value: 'low', label: 'Baixa', desc: 'Pode aguardar' },
-                      { value: 'medium', label: 'Média', desc: 'Alguns dias' },
-                      { value: 'high', label: 'Alta', desc: 'Urgente' }
-                    ].map((urgency) => (
-                      <div
-                        key={urgency.value}
-                        className={`border-2 rounded-lg p-3 cursor-pointer transition-colors ${
-                          scheduleData.urgency === urgency.value
-                            ? getUrgencyColor(urgency.value)
-                            : 'border-gray-600 hover:border-gray-500'
-                        }`}
-                        onClick={() => handleInputChange('urgency', urgency.value)}
-                      >
-                        <div className="text-center">
-                          <h4 className="font-medium text-white">{urgency.label}</h4>
-                          <p className="text-xs text-gray-400">{urgency.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Date and Time Selection */}
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Data e Horário</h2>
-              
-              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Data *
-                    </label>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => handleDateChange(e.target.value)}
-                      min={getMinDate()}
-                      max={getMaxDate()}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Duração Estimada
+                    <label className="block text-gray-300 text-sm font-medium mb-2">
+                      Especialidade
                     </label>
                     <select
-                      value={scheduleData.duration}
-                      onChange={(e) => handleInputChange('duration', Number(e.target.value))}
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+                      value={formData.specialty}
+                      onChange={(e) => handleInputChange('specialty', e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary-500"
                     >
-                      {durationOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
+                      {provider.serviceProvider?.specialties?.map((specialty) => (
+                        <option key={specialty} value={specialty}>
+                          {specialty}
                         </option>
                       ))}
                     </select>
                   </div>
-                </div>
 
-                {/* Time Slots */}
-                {selectedDate && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Horário Disponível *
+                    <label className="block text-gray-300 text-sm font-medium mb-2">
+                      Urgência
                     </label>
-                    <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-                      {availableSlots.map((slot) => (
-                        <button
-                          key={slot.time}
-                          type="button"
-                          onClick={() => slot.available && handleTimeSelect(slot.time)}
-                          disabled={!slot.available}
-                          className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                            selectedTime === slot.time
-                              ? 'bg-primary-500 text-white'
-                              : slot.available
-                              ? 'bg-gray-700 text-white hover:bg-gray-600 border border-gray-600'
-                              : 'bg-gray-900 text-gray-500 cursor-not-allowed border border-gray-800'
-                          }`}
-                        >
-                          {slot.time}
-                        </button>
-                      ))}
-                    </div>
-                    {selectedDate && availableSlots.filter(s => s.available).length === 0 && (
-                      <p className="text-yellow-400 text-sm mt-2">
-                        Nenhum horário disponível para esta data. Tente outra data.
-                      </p>
-                    )}
+                    <select
+                      value={formData.urgency}
+                      onChange={(e) => handleInputChange('urgency', e.target.value)}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary-500"
+                    >
+                      <option value="LOW">Baixa - Pode aguardar alguns dias</option>
+                      <option value="MEDIUM">Média - Precisa ser resolvido em breve</option>
+                      <option value="HIGH">Alta - Urgente, precisa ser resolvido hoje</option>
+                    </select>
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
-            {/* Submit Button */}
-            <div className="flex justify-end">
+            {/* Detalhes Técnicos */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+                <Settings className="w-5 h-5 mr-2" />
+                Detalhes do Problema
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Descrição Detalhada do Problema *
+                  </label>
+                  <textarea
+                    value={formData.issue}
+                    onChange={(e) => handleInputChange('issue', e.target.value)}
+                    placeholder="Descreva em detalhes o problema técnico, sintomas observados, quando começou, etc..."
+                    rows={4}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Local/Endereço
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    placeholder="Endereço onde será realizada a manutenção"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Observações Adicionais
+                  </label>
+                  <textarea
+                    value={formData.additionalNotes}
+                    onChange={(e) => handleInputChange('additionalNotes', e.target.value)}
+                    placeholder="Informações extras que podem ajudar o especialista..."
+                    rows={3}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Agendamento */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+                <Calendar className="w-5 h-5 mr-2" />
+                Data e Horário
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Data *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.scheduledDate}
+                    onChange={(e) => handleInputChange('scheduledDate', e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Horário *
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.scheduledTime}
+                    onChange={(e) => handleInputChange('scheduledTime', e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Duração Estimada (min)
+                  </label>
+                  <select
+                    value={formData.estimatedDuration}
+                    onChange={(e) => handleInputChange('estimatedDuration', parseInt(e.target.value))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary-500"
+                  >
+                    <option value={30}>30 minutos</option>
+                    <option value={60}>1 hora</option>
+                    <option value={90}>1h 30min</option>
+                    <option value={120}>2 horas</option>
+                    <option value={180}>3 horas</option>
+                    <option value={240}>4 horas</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Botões */}
+            <div className="flex space-x-4">
+              <button
+                type="button"
+                onClick={() => navigate('/app/specialists')}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
               <button
                 type="submit"
-                disabled={submitting || !selectedDate || !selectedTime || !scheduleData.issue || !scheduleData.description}
-                className="btn btn-primary btn-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={submitting}
+                className="flex-1 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white py-3 rounded-lg transition-colors flex items-center justify-center"
               >
                 {submitting ? (
                   <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                     Agendando...
                   </>
                 ) : (
-                  'Agendar Sessão'
+                  <>
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    Agendar Sessão
+                  </>
                 )}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Sidebar */}
+        {/* Sidebar - Informações do Especialista */}
         <div className="space-y-6">
-          {/* Technician Info */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Técnico Selecionado</h3>
+          {/* Dados do Especialista */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-white mb-4">Especialista</h2>
             
-            <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-primary-500 rounded-full flex items-center justify-center mr-3">
-                <span className="text-white font-medium">
-                  {technician.name.charAt(0)}
-                </span>
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                {provider.name.charAt(0).toUpperCase()}
               </div>
               <div>
-                <h4 className="font-medium text-white">{technician.name}</h4>
-                <div className="flex items-center">
-                  <svg className="w-4 h-4 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <span className="text-white text-sm">{technician.rating}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Especialidades:</span>
-                <span className="text-white">{technician.specialties.join(', ')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Tempo de resposta:</span>
-                <span className="text-white">{technician.responseTime}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Valor por hora:</span>
-                <span className="text-white">R$ {technician.hourlyRate}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Cost Estimate */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Estimativa de Custo</h3>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Duração:</span>
-                <span className="text-white">
-                  {durationOptions.find(d => d.value === scheduleData.duration)?.label}
-                </span>
-              </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Valor por hora:</span>
-                <span className="text-white">R$ {technician.hourlyRate}</span>
-              </div>
-              
-              <div className="border-t border-gray-600 pt-3">
-                <div className="flex justify-between">
-                  <span className="font-medium text-white">Total estimado:</span>
-                  <span className="font-bold text-primary-400 text-lg">
-                    R$ {scheduleData.estimatedCost.toFixed(2)}
+                <h3 className="text-lg font-semibold text-white">{provider.name}</h3>
+                <div className="flex items-center space-x-2">
+                  <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                  <span className="text-white font-medium">{provider.rating.toFixed(1)}</span>
+                  <span className="text-gray-400">
+                    ({provider.serviceProvider?.completedJobs || 0} trabalhos)
                   </span>
                 </div>
               </div>
-              
-              <p className="text-xs text-gray-400 mt-2">
-                * Valor final pode variar conforme a duração real da sessão
-              </p>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Experiência:</span>
+                <span className="text-white">{provider.serviceProvider?.experience || 0} anos</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Valor/hora:</span>
+                <span className="text-white">R$ {provider.serviceProvider?.hourlyRate || 150}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Tempo resposta:</span>
+                <span className="text-white">{provider.serviceProvider?.responseTime || '24h'}</span>
+              </div>
             </div>
           </div>
 
-          {/* Session Info */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Como Funciona</h3>
+          {/* Resumo do Orçamento */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center">
+              <DollarSign className="w-5 h-5 mr-2" />
+              Estimativa de Custo
+            </h2>
             
-            <div className="space-y-3 text-sm">
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
-                  <span className="text-white text-xs font-bold">1</span>
-                </div>
-                <div>
-                  <p className="text-white font-medium">Agendamento</p>
-                  <p className="text-gray-400">O técnico será notificado e confirmará a sessão</p>
-                </div>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Valor/hora:</span>
+                <span className="text-white">R$ {provider.serviceProvider?.hourlyRate || 150}</span>
               </div>
-              
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
-                  <span className="text-white text-xs font-bold">2</span>
-                </div>
-                <div>
-                  <p className="text-white font-medium">Conexão</p>
-                  <p className="text-gray-400">No horário marcado, vocês se conectarão via videochamada</p>
-                </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Duração:</span>
+                <span className="text-white">{formData.estimatedDuration} min</span>
               </div>
-              
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
-                  <span className="text-white text-xs font-bold">3</span>
-                </div>
-                <div>
-                  <p className="text-white font-medium">Suporte</p>
-                  <p className="text-gray-400">Receba orientações em tempo real para resolver o problema</p>
-                </div>
+              <hr className="border-gray-600" />
+              <div className="flex justify-between font-semibold">
+                <span className="text-white">Total estimado:</span>
+                <span className="text-primary-400">R$ {calculateEstimatedCost().toFixed(2)}</span>
               </div>
-              
-              <div className="flex items-start">
-                <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">
-                  <span className="text-white text-xs font-bold">4</span>
-                </div>
-                <div>
-                  <p className="text-white font-medium">Pagamento</p>
-                  <p className="text-gray-400">Pague apenas pelo tempo utilizado</p>
-                </div>
-              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-800 rounded-lg">
+              <p className="text-yellow-300 text-xs">
+                * Valor estimado. O custo final pode variar conforme a complexidade do trabalho.
+              </p>
             </div>
           </div>
         </div>
@@ -585,4 +505,3 @@ const ScheduleSessionPage: React.FC = () => {
 };
 
 export default ScheduleSessionPage;
-

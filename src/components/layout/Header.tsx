@@ -85,7 +85,7 @@ const Header: React.FC = () => {
                   </Link>
                 </>
               ) : isDashboard ? (
-                // Menu unificado para todos os usuários logados
+                // Menu para usuários logados (SEM ASSINATURA)
                 <>
                   <Link
                     to="/app/dashboard"
@@ -93,7 +93,7 @@ const Header: React.FC = () => {
                       isActive('/app/dashboard') ? 'text-white font-medium' : ''
                     }`}
                   >
-                    Dashboard
+                    Painel
                   </Link>
                   <Link
                     to="/app/specialists"
@@ -110,14 +110,6 @@ const Header: React.FC = () => {
                     }`}
                   >
                     Sessões
-                  </Link>
-                  <Link
-                    to="/app/subscription"
-                    className={`text-gray-300 hover:text-white transition-colors ${
-                      isActive('/app/subscription') ? 'text-white font-medium' : ''
-                    }`}
-                  >
-                    Assinatura
                   </Link>
                 </>
               ) : null}
@@ -177,7 +169,7 @@ const Header: React.FC = () => {
                   </svg>
                 </button>
 
-                {/* Dropdown Menu */}
+                {/* Dropdown Menu (SEM ASSINATURA) */}
                 {isProfileMenuOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1 z-50">
                     <Link
@@ -186,13 +178,6 @@ const Header: React.FC = () => {
                       onClick={() => setIsProfileMenuOpen(false)}
                     >
                       Meu Perfil
-                    </Link>
-                    <Link
-                      to="/app/subscription"
-                      className="block px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
-                      onClick={() => setIsProfileMenuOpen(false)}
-                    >
-                      Assinatura
                     </Link>
                     <Link
                       to="/app/notifications"
@@ -300,7 +285,7 @@ const Header: React.FC = () => {
                   </Link>
                 </>
               ) : isDashboard ? (
-                // Menu mobile unificado para todos os usuários
+                // Menu mobile para usuários logados (SEM ASSINATURA)
                 <>
                   <Link
                     to="/app/dashboard"
@@ -309,7 +294,7 @@ const Header: React.FC = () => {
                     }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    Dashboard
+                    Painel
                   </Link>
                   <Link
                     to="/app/specialists"
@@ -328,15 +313,6 @@ const Header: React.FC = () => {
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Sessões
-                  </Link>
-                  <Link
-                    to="/app/subscription"
-                    className={`text-gray-300 hover:text-white transition-colors ${
-                      isActive('/app/subscription') ? 'text-white font-medium' : ''
-                    }`}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Assinatura
                   </Link>
                 </>
               ) : null}

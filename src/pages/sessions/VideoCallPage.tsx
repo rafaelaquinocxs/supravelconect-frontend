@@ -1,600 +1,944 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { 
+  Video, 
+  VideoOff, 
+  Mic, 
+  MicOff, 
+  Monitor, 
+  MonitorOff,
+  Phone,
+  MessageCircle,
+  Settings,
+  Maximize,
+  Minimize,
+  Volume2,
+  VolumeX,
+  Users,
+  Clock,
+  AlertCircle,
+  Loader,
+  ArrowLeft,
+  User,
+  X,
+  PhoneOff
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSocket } from '../../contexts/SocketContext';
-import api from '../../services/api';
 import { toast } from 'react-toastify';
+import api from '../../services/api';
+import io, { Socket } from 'socket.io-client';
 
-// Tipos
-interface Session {
+interface ChatMessage {
   id: string;
-  clientId: string;
-  clientName: string;
-  technicianId: string;
-  technicianName: string;
-  specialtyId: string;
-  specialtyName: string;
-  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
-  scheduledAt: string;
-  startedAt?: string;
-  endedAt?: string;
-  duration?: number;
-  recording?: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  timestamp: Date;
+  type: 'text' | 'system';
+}
+
+interface VideoCallStats {
+  duration: number;
+  quality: 'excellent' | 'good' | 'poor';
+  participants: number;
+}
+
+interface Participant {
+  id: string;
+  name: string;
+  role: 'client' | 'technician';
+  isVideoEnabled: boolean;
+  isAudioEnabled: boolean;
+  isScreenSharing: boolean;
+}
+
+interface SessionData {
+  _id: string;
+  title: string;
+  description: string;
+  clientId: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  technicianId: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  status: string;
+  scheduledDate: string;
+  scheduledTime: string;
 }
 
 const VideoCallPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isCallEnded, setIsCallEnded] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [feedback, setFeedback] = useState('');
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
-  
-  const { user } = useAuth();
-  const { socket, isConnected } = useSocket();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Estados principais
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   
+  // Estados de mídia
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  
+  // Estados da interface
+  const [showChat, setShowChat] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  
+  // Estados do chat
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  // Estados da sessão
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [callStats, setCallStats] = useState<VideoCallStats>({
+    duration: 0,
+    quality: 'good',
+    participants: 0
+  });
+
+  // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Buscar dados da sessão
+  // Configuração WebRTC
+  const rtcConfiguration = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  // ==================== INICIALIZAÇÃO ====================
+
   useEffect(() => {
-    const fetchSessionData = async () => {
-      try {
-        const response = await api.get(`/api/sessions/${sessionId}`);
-        setSession(response.data);
-        
-        if (response.data.status === 'completed') {
-          setIsCallEnded(true);
-        }
-      } catch (error) {
-        console.error('Erro ao buscar dados da sessão:', error);
-        toast.error('Não foi possível carregar os dados da sessão');
-        navigate('/app/dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (sessionId) {
-      fetchSessionData();
-    }
-  }, [sessionId, navigate]);
-
-  // Iniciar timer quando a chamada começar
-  useEffect(() => {
-    if (session?.status === 'in-progress' && !timerRef.current) {
-      const startTime = session.startedAt ? new Date(session.startedAt).getTime() : Date.now();
-      
-      timerRef.current = setInterval(() => {
-        const currentTime = Date.now();
-        const elapsed = Math.floor((currentTime - startTime) / 1000);
-        setElapsedTime(elapsed);
-      }, 1000);
+    if (!sessionId || !user) {
+      navigate('/app/sessions');
+      return;
     }
 
+    initializeVideoCall();
+    
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      cleanup();
     };
-  }, [session]);
+  }, [sessionId, user]);
 
-  // Configurar WebRTC quando a sessão estiver carregada e o socket conectado
-  useEffect(() => {
-    if (!session || !isConnected || !socket) return;
-
-    const setupWebRTC = async () => {
-      try {
-        // Configurar conexão WebRTC
-        const configuration = {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        };
-        
-        peerConnectionRef.current = new RTCPeerConnection(configuration);
-        
-        // Obter mídia local
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
-        
-        localStreamRef.current = stream;
-        
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-        
-        // Adicionar tracks à conexão peer
-        stream.getTracks().forEach(track => {
-          if (peerConnectionRef.current) {
-            peerConnectionRef.current.addTrack(track, stream);
-          }
-        });
-        
-        // Configurar handlers de eventos
-        peerConnectionRef.current.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit('ice-candidate', {
-              sessionId,
-              candidate: event.candidate,
-              userId: user?.id
-            });
-          }
-        };
-        
-        peerConnectionRef.current.ontrack = (event) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-          }
-        };
-        
-        // Sinalização via Socket.io
-        socket.on('offer', async (data) => {
-          if (data.sessionId !== sessionId || !peerConnectionRef.current) return;
-          
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.offer));
-          
-          const answer = await peerConnectionRef.current.createAnswer();
-          await peerConnectionRef.current.setLocalDescription(answer);
-          
-          socket.emit('answer', {
-            sessionId,
-            answer,
-            userId: user?.id
-          });
-        });
-        
-        socket.on('answer', async (data) => {
-          if (data.sessionId !== sessionId || !peerConnectionRef.current) return;
-          
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-        });
-        
-        socket.on('ice-candidate', async (data) => {
-          if (data.sessionId !== sessionId || !peerConnectionRef.current) return;
-          
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-        });
-        
-        socket.on('call-ended', (data) => {
-          if (data.sessionId !== sessionId) return;
-          
-          endCall();
-        });
-        
-        // Iniciar a chamada
-        if (user?.role === 'client') {
-          const offer = await peerConnectionRef.current.createOffer();
-          await peerConnectionRef.current.setLocalDescription(offer);
-          
-          socket.emit('offer', {
-            sessionId,
-            offer,
-            userId: user.id
-          });
-        }
-        
-        // Iniciar gravação
-        socket.emit('start-recording', { sessionId });
-        setIsRecording(true);
-        
-        // Atualizar status da sessão
-        if (session.status !== 'in-progress') {
-          await api.put(`/api/sessions/${sessionId}/status`, { status: 'in-progress' });
-          
-          // Atualizar o estado local
-          setSession(prev => prev ? { ...prev, status: 'in-progress', startedAt: new Date().toISOString() } : null);
-        }
-      } catch (error) {
-        console.error('Erro ao configurar WebRTC:', error);
-        toast.error('Não foi possível iniciar a chamada de vídeo');
-      }
-    };
-
-    setupWebRTC();
-
-    // Cleanup
-    return () => {
-      if (socket) {
-        socket.off('offer');
-        socket.off('answer');
-        socket.off('ice-candidate');
-        socket.off('call-ended');
-      }
-      
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-    };
-  }, [session, isConnected, socket, sessionId, user]);
-
-  // Função para encerrar a chamada
-  const endCall = async () => {
+  const initializeVideoCall = async () => {
     try {
-      // Parar a gravação
-      if (socket && isRecording) {
-        socket.emit('stop-recording', { sessionId });
-        setIsRecording(false);
+      console.log('🎥 Inicializando videochamada para sessão:', sessionId);
+      
+      // 1. Carregar dados da sessão
+      await loadSessionData();
+      
+      // 2. Conectar ao socket
+      await connectSocket();
+      
+      // 3. Inicializar mídia local
+      await initializeLocalMedia();
+      
+      // 4. Configurar WebRTC
+      setupWebRTC();
+      
+      setIsConnecting(false);
+      
+    } catch (error: any) {
+      console.error('❌ Erro ao inicializar videochamada:', error);
+      setConnectionError(error.message || 'Erro ao conectar à videochamada');
+      setIsConnecting(false);
+    }
+  };
+
+  const loadSessionData = async () => {
+    try {
+      const response = await api.get(`/api/sessions/${sessionId}`);
+      
+      if (response.data.success) {
+        const session = response.data.data;
+        setSessionData(session);
+        
+        // Verificar se o usuário tem permissão para esta sessão
+        const isParticipant = session.clientId._id === user?.id || session.technicianId._id === user?.id;
+        
+        if (!isParticipant) {
+          throw new Error('Você não tem permissão para acessar esta videochamada');
+        }
+        
+        // Verificar se a sessão está em andamento
+        if (session.status !== 'IN_PROGRESS') {
+          throw new Error('Esta sessão não está em andamento');
+        }
+        
+        console.log('✅ Dados da sessão carregados:', session);
+        
+      } else {
+        throw new Error('Sessão não encontrada');
       }
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar sessão:', error);
+      throw error;
+    }
+  };
+
+  const connectSocket = async () => {
+    try {
+      // Conectar ao socket do backend
+      const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+        auth: {
+          token: localStorage.getItem('token'),
+          sessionId: sessionId,
+          userId: user?.id
+        }
+      });
+
+      socketRef.current = socket;
+
+      // Eventos do socket
+      socket.on('connect', () => {
+        console.log('✅ Socket conectado');
+        socket.emit('join-session', { sessionId, userId: user?.id });
+      });
+
+      socket.on('user-joined', (data) => {
+        console.log('👤 Usuário entrou na sessão:', data);
+        addSystemMessage(`${data.userName} entrou na videochamada`);
+        updateParticipants(data.participants);
+      });
+
+      socket.on('user-left', (data) => {
+        console.log('👋 Usuário saiu da sessão:', data);
+        addSystemMessage(`${data.userName} saiu da videochamada`);
+        updateParticipants(data.participants);
+      });
+
+      socket.on('offer', async (data) => {
+        console.log('📞 Recebendo offer:', data);
+        await handleOffer(data);
+      });
+
+      socket.on('answer', async (data) => {
+        console.log('✅ Recebendo answer:', data);
+        await handleAnswer(data);
+      });
+
+      socket.on('ice-candidate', async (data) => {
+        console.log('🧊 Recebendo ICE candidate:', data);
+        await handleIceCandidate(data);
+      });
+
+      socket.on('chat-message', (data) => {
+        console.log('💬 Nova mensagem:', data);
+        addChatMessage(data);
+      });
+
+      socket.on('media-state-changed', (data) => {
+        console.log('🎛️ Estado de mídia alterado:', data);
+        updateParticipantMediaState(data);
+      });
+
+      socket.on('disconnect', () => {
+        console.log('❌ Socket desconectado');
+        setIsConnected(false);
+      });
+
+      socket.on('error', (error) => {
+        console.error('❌ Erro no socket:', error);
+        toast.error('Erro de conexão: ' + error.message);
+      });
+
+    } catch (error: any) {
+      console.error('❌ Erro ao conectar socket:', error);
+      throw error;
+    }
+  };
+
+  const initializeLocalMedia = async () => {
+    try {
+      console.log('🎥 Inicializando mídia local...');
       
-      // Atualizar status da sessão
-      await api.put(`/api/sessions/${sessionId}/status`, { status: 'completed' });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      localStreamRef.current = stream;
       
-      // Limpar recursos
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
       }
+
+      console.log('✅ Mídia local inicializada');
       
+    } catch (error: any) {
+      console.error('❌ Erro ao acessar mídia:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        throw new Error('Permissão negada para acessar câmera/microfone');
+      } else if (error.name === 'NotFoundError') {
+        throw new Error('Câmera ou microfone não encontrados');
+      } else {
+        throw new Error('Erro ao acessar mídia: ' + error.message);
+      }
+    }
+  };
+
+  const setupWebRTC = () => {
+    try {
+      console.log('🔗 Configurando WebRTC...');
+      
+      const peerConnection = new RTCPeerConnection(rtcConfiguration);
+      peerConnectionRef.current = peerConnection;
+
+      // Adicionar stream local
       if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStreamRef.current!);
+        });
       }
+
+      // Eventos do peer connection
+      peerConnection.ontrack = (event) => {
+        console.log('🎵 Recebendo stream remoto:', event);
+        
+        const [remoteStream] = event.streams;
+        remoteStreamRef.current = remoteStream;
+        
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+        }
+        
+        setIsConnected(true);
+      };
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && socketRef.current) {
+          console.log('🧊 Enviando ICE candidate');
+          socketRef.current.emit('ice-candidate', {
+            sessionId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        console.log('🔗 Estado da conexão:', peerConnection.connectionState);
+        
+        if (peerConnection.connectionState === 'connected') {
+          setIsConnected(true);
+          toast.success('Conectado à videochamada!');
+        } else if (peerConnection.connectionState === 'disconnected') {
+          setIsConnected(false);
+          toast.warning('Conexão perdida');
+        } else if (peerConnection.connectionState === 'failed') {
+          setIsConnected(false);
+          toast.error('Falha na conexão');
+        }
+      };
+
+      console.log('✅ WebRTC configurado');
       
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
+    } catch (error: any) {
+      console.error('❌ Erro ao configurar WebRTC:', error);
+      throw error;
+    }
+  };
+
+  // ==================== HANDLERS WEBRTC ====================
+
+  const handleOffer = async (data: any) => {
+    try {
+      const peerConnection = peerConnectionRef.current;
+      if (!peerConnection) return;
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
       
-      // Atualizar estado
-      setIsCallEnded(true);
-      
-      // Notificar o outro participante
-      if (socket) {
-        socket.emit('call-ended', { sessionId, userId: user?.id });
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      if (socketRef.current) {
+        socketRef.current.emit('answer', {
+          sessionId,
+          answer: answer
+        });
       }
     } catch (error) {
-      console.error('Erro ao encerrar chamada:', error);
-      toast.error('Erro ao encerrar a chamada');
+      console.error('❌ Erro ao processar offer:', error);
     }
   };
 
-  // Função para alternar microfone
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTracks = localStreamRef.current.getAudioTracks();
-      audioTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
+  const handleAnswer = async (data: any) => {
+    try {
+      const peerConnection = peerConnectionRef.current;
+      if (!peerConnection) return;
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    } catch (error) {
+      console.error('❌ Erro ao processar answer:', error);
     }
   };
 
-  // Função para alternar câmera
+  const handleIceCandidate = async (data: any) => {
+    try {
+      const peerConnection = peerConnectionRef.current;
+      if (!peerConnection) return;
+
+      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    } catch (error) {
+      console.error('❌ Erro ao processar ICE candidate:', error);
+    }
+  };
+
+  // ==================== CONTROLES DE MÍDIA ====================
+
   const toggleVideo = () => {
     if (localStreamRef.current) {
-      const videoTracks = localStreamRef.current.getVideoTracks();
-      videoTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsVideoOff(!isVideoOff);
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
+        
+        // Notificar outros participantes
+        if (socketRef.current) {
+          socketRef.current.emit('media-state-changed', {
+            sessionId,
+            userId: user?.id,
+            isVideoEnabled: videoTrack.enabled,
+            isAudioEnabled: isAudioEnabled
+          });
+        }
+      }
     }
   };
 
-  // Função para compartilhar tela
+  const toggleAudio = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioEnabled(audioTrack.enabled);
+        
+        // Notificar outros participantes
+        if (socketRef.current) {
+          socketRef.current.emit('media-state-changed', {
+            sessionId,
+            userId: user?.id,
+            isVideoEnabled: isVideoEnabled,
+            isAudioEnabled: audioTrack.enabled
+          });
+        }
+      }
+    }
+  };
+
   const toggleScreenShare = async () => {
-    if (!peerConnectionRef.current) return;
-    
     try {
       if (!isScreenSharing) {
         // Iniciar compartilhamento de tela
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        
-        // Substituir a track de vídeo
-        const videoTrack = screenStream.getVideoTracks()[0];
-        
-        const senders = peerConnectionRef.current.getSenders();
-        const videoSender = senders.find(sender => 
-          sender.track?.kind === 'video'
-        );
-        
-        if (videoSender) {
-          videoSender.replaceTrack(videoTrack);
-        }
-        
-        // Atualizar vídeo local
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = screenStream;
-        }
-        
-        // Adicionar handler para quando o usuário parar o compartilhamento
-        videoTrack.onended = () => {
-          toggleScreenShare();
-        };
-        
-        setIsScreenSharing(true);
-      } else {
-        // Parar compartilhamento de tela
-        if (localStreamRef.current) {
-          const videoTrack = localStreamRef.current.getVideoTracks()[0];
-          
-          const senders = peerConnectionRef.current.getSenders();
-          const videoSender = senders.find(sender => 
-            sender.track?.kind === 'video'
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true
+        });
+
+        const peerConnection = peerConnectionRef.current;
+        if (peerConnection && localStreamRef.current) {
+          // Substituir track de vídeo
+          const videoTrack = screenStream.getVideoTracks()[0];
+          const sender = peerConnection.getSenders().find(s => 
+            s.track && s.track.kind === 'video'
           );
           
-          if (videoSender && videoTrack) {
-            videoSender.replaceTrack(videoTrack);
+          if (sender) {
+            await sender.replaceTrack(videoTrack);
           }
           
-          // Restaurar vídeo local
+          // Atualizar stream local
+          const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
+          localStreamRef.current.removeTrack(oldVideoTrack);
+          localStreamRef.current.addTrack(videoTrack);
+          
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = localStreamRef.current;
           }
+          
+          setIsScreenSharing(true);
+          
+          // Quando parar o compartilhamento
+          videoTrack.onended = () => {
+            stopScreenShare();
+          };
+        }
+      } else {
+        stopScreenShare();
+      }
+    } catch (error) {
+      console.error('❌ Erro no compartilhamento de tela:', error);
+      toast.error('Erro ao compartilhar tela');
+    }
+  };
+
+  const stopScreenShare = async () => {
+    try {
+      // Voltar para câmera
+      const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const videoTrack = videoStream.getVideoTracks()[0];
+      
+      const peerConnection = peerConnectionRef.current;
+      if (peerConnection && localStreamRef.current) {
+        const sender = peerConnection.getSenders().find(s => 
+          s.track && s.track.kind === 'video'
+        );
+        
+        if (sender) {
+          await sender.replaceTrack(videoTrack);
+        }
+        
+        // Atualizar stream local
+        const oldVideoTrack = localStreamRef.current.getVideoTracks()[0];
+        localStreamRef.current.removeTrack(oldVideoTrack);
+        localStreamRef.current.addTrack(videoTrack);
+        
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
         }
         
         setIsScreenSharing(false);
       }
     } catch (error) {
-      console.error('Erro ao compartilhar tela:', error);
-      toast.error('Não foi possível compartilhar a tela');
+      console.error('❌ Erro ao parar compartilhamento:', error);
     }
   };
 
-  // Função para enviar avaliação
-  const submitFeedback = async () => {
-    if (!sessionId || rating === 0) {
-      toast.error('Por favor, selecione uma avaliação');
-      return;
+  // ==================== CHAT ====================
+
+  const addChatMessage = (messageData: any) => {
+    const message: ChatMessage = {
+      id: Date.now().toString(),
+      senderId: messageData.senderId,
+      senderName: messageData.senderName,
+      message: messageData.message,
+      timestamp: new Date(messageData.timestamp),
+      type: 'text'
+    };
+    
+    setMessages(prev => [...prev, message]);
+    
+    if (!showChat) {
+      setUnreadCount(prev => prev + 1);
     }
     
-    setSubmittingFeedback(true);
+    // Scroll para baixo
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    }, 100);
+  };
+
+  const addSystemMessage = (message: string) => {
+    const systemMessage: ChatMessage = {
+      id: Date.now().toString(),
+      senderId: 'system',
+      senderName: 'Sistema',
+      message,
+      timestamp: new Date(),
+      type: 'system'
+    };
     
-    try {
-      await api.post(`/api/sessions/${sessionId}/feedback`, {
-        rating,
-        feedback
-      });
-      
-      toast.success('Avaliação enviada com sucesso!');
-      navigate('/app/dashboard');
-    } catch (error) {
-      console.error('Erro ao enviar avaliação:', error);
-      toast.error('Não foi possível enviar a avaliação');
-    } finally {
-      setSubmittingFeedback(false);
+    setMessages(prev => [...prev, systemMessage]);
+  };
+
+  const sendMessage = () => {
+    if (!newMessage.trim() || !socketRef.current) return;
+    
+    const messageData = {
+      sessionId,
+      senderId: user?.id,
+      senderName: user?.name,
+      message: newMessage.trim(),
+      timestamp: new Date()
+    };
+    
+    socketRef.current.emit('chat-message', messageData);
+    setNewMessage('');
+  };
+
+  const toggleChat = () => {
+    setShowChat(!showChat);
+    if (!showChat) {
+      setUnreadCount(0);
     }
   };
 
-  // Formatar tempo decorrido
-  const formatElapsedTime = (seconds: number) => {
+  // ==================== UTILITÁRIOS ====================
+
+  const updateParticipants = (participantsData: any[]) => {
+    setParticipants(participantsData);
+    setCallStats(prev => ({
+      ...prev,
+      participants: participantsData.length
+    }));
+  };
+
+  const updateParticipantMediaState = (data: any) => {
+    setParticipants(prev => prev.map(p => 
+      p.id === data.userId 
+        ? { ...p, isVideoEnabled: data.isVideoEnabled, isAudioEnabled: data.isAudioEnabled }
+        : p
+    ));
+  };
+
+  const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-screen bg-dark-400">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-dark-400">
-        <h2 className="text-2xl font-bold mb-4">Sessão não encontrada</h2>
-        <p className="text-gray-400 mb-6">
-          A sessão que você está procurando não existe ou foi removida.
-        </p>
-        <button 
-          className="btn btn-primary"
-          onClick={() => navigate('/app/dashboard')}
-        >
-          Voltar para o Dashboard
-        </button>
-      </div>
-    );
-  }
-
-  // Tela de avaliação após o término da chamada
-  if (isCallEnded) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-dark-400 p-4">
-        <div className="bg-dark-300 rounded-lg p-8 max-w-md w-full">
-          <h2 className="text-2xl font-bold mb-6 text-center">Chamada Finalizada</h2>
-          
-          <div className="mb-6 text-center">
-            <p className="text-gray-300 mb-2">
-              {user?.role === 'client' 
-                ? `Sessão com ${session.technicianName}`
-                : `Sessão com ${session.clientName}`}
-            </p>
-            <p className="text-gray-400">
-              {session.specialtyName}
-            </p>
-            {session.duration && (
-              <p className="text-gray-400 mt-2">
-                Duração: {Math.floor(session.duration / 60)} minutos
-              </p>
-            )}
-          </div>
-          
-          {user?.role === 'client' && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-3">Como foi sua experiência?</h3>
-              
-              <div className="flex justify-center mb-4">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    type="button"
-                    className="mx-1 focus:outline-none"
-                    onClick={() => setRating(star)}
-                  >
-                    <svg 
-                      className={`w-8 h-8 ${star <= rating ? 'text-yellow-500' : 'text-gray-600'}`}
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-              
-              <textarea
-                className="input mb-4"
-                rows={4}
-                placeholder="Deixe um comentário sobre sua experiência..."
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-              ></textarea>
-              
-              <button
-                className="btn btn-primary w-full"
-                onClick={submitFeedback}
-                disabled={rating === 0 || submittingFeedback}
-              >
-                {submittingFeedback ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Enviando...
-                  </span>
-                ) : (
-                  'Enviar Avaliação'
-                )}
-              </button>
-            </div>
-          )}
-          
-          <button 
-            className="btn btn-outline w-full mt-4"
-            onClick={() => navigate('/app/dashboard')}
-          >
-            Voltar para o Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Tela da chamada de vídeo
-  return (
-    <div className="flex flex-col h-screen bg-dark-900">
-      {/* Cabeçalho */}
-      <div className="bg-dark-300 p-4 flex justify-between items-center">
-        <div>
-          <h1 className="font-semibold">
-            {user?.role === 'client' 
-              ? `Sessão com ${session.technicianName}`
-              : `Sessão com ${session.clientName}`}
-          </h1>
-          <p className="text-gray-400 text-sm">{session.specialtyName}</p>
-        </div>
-        
-        <div className="flex items-center">
-          {isRecording && (
-            <div className="flex items-center mr-4">
-              <div className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-              <span className="text-red-400 text-sm">REC</span>
-            </div>
-          )}
-          
-          <div className="bg-dark-200 px-3 py-1 rounded-full">
-            <span className="font-mono">{formatElapsedTime(elapsedTime)}</span>
-          </div>
-        </div>
-      </div>
+  const endCall = async () => {
+    try {
+      // Notificar o backend que a chamada terminou
+      if (socketRef.current) {
+        socketRef.current.emit('leave-session', { sessionId, userId: user?.id });
+      }
       
-      {/* Área de vídeo */}
-      <div className="flex-grow relative bg-dark-900">
-        {/* Vídeo remoto (tela principal) */}
+      cleanup();
+      navigate(`/app/sessions/${sessionId}`);
+      
+    } catch (error) {
+      console.error('❌ Erro ao encerrar chamada:', error);
+      navigate(`/app/sessions/${sessionId}`);
+    }
+  };
+
+  const cleanup = () => {
+    // Parar streams
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    
+    // Fechar peer connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+    }
+    
+    // Desconectar socket
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+    
+    // Limpar timeouts
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+  };
+
+  // ==================== TIMER DOS CONTROLES ====================
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isConnected) {
+      interval = setInterval(() => {
+        setCallStats(prev => ({
+          ...prev,
+          duration: prev.duration + 1
+        }));
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isConnected]);
+
+  // Auto-hide controls
+  useEffect(() => {
+    const resetControlsTimeout = () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      
+      setShowControls(true);
+      
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (!showChat && !showSettings) {
+          setShowControls(false);
+        }
+      }, 3000);
+    };
+
+    const handleMouseMove = () => resetControlsTimeout();
+    const handleKeyPress = () => resetControlsTimeout();
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('keypress', handleKeyPress);
+    
+    resetControlsTimeout();
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('keypress', handleKeyPress);
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, [showChat, showSettings]);
+
+  // ==================== RENDER ====================
+
+  if (isConnecting) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-primary-500 animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Conectando à videochamada...</h2>
+          <p className="text-gray-400">Aguarde enquanto configuramos tudo para você</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Erro na Conexão</h2>
+          <p className="text-gray-400 mb-6">{connectionError}</p>
+          <div className="space-x-4">
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-2 rounded-lg"
+            >
+              Tentar Novamente
+            </button>
+            <button
+              onClick={() => navigate('/app/sessions')}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black">
+      {/* Vídeos */}
+      <div className="relative w-full h-full">
+        {/* Vídeo remoto (principal) */}
         <video
           ref={remoteVideoRef}
-          className="w-full h-full object-cover"
           autoPlay
           playsInline
-        ></video>
+          className="w-full h-full object-cover"
+        />
         
-        {/* Vídeo local (miniatura) */}
-        <div className="absolute bottom-4 right-4 w-1/4 max-w-xs">
+        {/* Vídeo local (picture-in-picture) */}
+        <div className="absolute top-4 right-4 w-64 h-48 bg-gray-800 rounded-lg overflow-hidden border-2 border-gray-600">
           <video
             ref={localVideoRef}
-            className="w-full rounded-lg border-2 border-dark-300 shadow-lg"
             autoPlay
             playsInline
             muted
-          ></video>
+            className="w-full h-full object-cover"
+          />
+          {!isVideoEnabled && (
+            <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
+              <VideoOff className="w-8 h-8 text-gray-400" />
+            </div>
+          )}
         </div>
-      </div>
-      
-      {/* Controles */}
-      <div className="bg-dark-300 p-4 flex justify-center">
-        <div className="flex space-x-4">
-          <button
-            className={`p-3 rounded-full ${isMuted ? 'bg-red-600 hover:bg-red-700' : 'bg-dark-200 hover:bg-dark-100'}`}
-            onClick={toggleMute}
-          >
-            {isMuted ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            )}
-          </button>
-          
-          <button
-            className={`p-3 rounded-full ${isVideoOff ? 'bg-red-600 hover:bg-red-700' : 'bg-dark-200 hover:bg-dark-100'}`}
-            onClick={toggleVideo}
-          >
-            {isVideoOff ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            )}
-          </button>
-          
-          <button
-            className={`p-3 rounded-full ${isScreenSharing ? 'bg-green-600 hover:bg-green-700' : 'bg-dark-200 hover:bg-dark-100'}`}
-            onClick={toggleScreenShare}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </button>
-          
-          <button
-            className="p-3 rounded-full bg-red-600 hover:bg-red-700"
-            onClick={endCall}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
-            </svg>
-          </button>
+
+        {/* Informações da sessão */}
+        <div className="absolute top-4 left-4 bg-black bg-opacity-50 rounded-lg p-3">
+          <div className="flex items-center space-x-2 text-white">
+            <Clock className="w-4 h-4" />
+            <span className="font-mono">{formatDuration(callStats.duration)}</span>
+          </div>
+          {sessionData && (
+            <div className="text-sm text-gray-300 mt-1">
+              {sessionData.title}
+            </div>
+          )}
         </div>
+
+        {/* Status de conexão */}
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            isConnected 
+              ? 'bg-green-500 bg-opacity-20 text-green-300 border border-green-500'
+              : 'bg-yellow-500 bg-opacity-20 text-yellow-300 border border-yellow-500'
+          }`}>
+            {isConnected ? 'Conectado' : 'Conectando...'}
+          </div>
+        </div>
+
+        {/* Controles */}
+        {showControls && (
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+            <div className="bg-black bg-opacity-70 rounded-full px-6 py-3 flex items-center space-x-4">
+              {/* Toggle Áudio */}
+              <button
+                onClick={toggleAudio}
+                className={`p-3 rounded-full transition-colors ${
+                  isAudioEnabled 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                {isAudioEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+              </button>
+
+              {/* Toggle Vídeo */}
+              <button
+                onClick={toggleVideo}
+                className={`p-3 rounded-full transition-colors ${
+                  isVideoEnabled 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                }`}
+              >
+                {isVideoEnabled ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+              </button>
+
+              {/* Compartilhar Tela */}
+              <button
+                onClick={toggleScreenShare}
+                className={`p-3 rounded-full transition-colors ${
+                  isScreenSharing 
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                    : 'bg-gray-700 hover:bg-gray-600 text-white'
+                }`}
+              >
+                {isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+              </button>
+
+              {/* Chat */}
+              <button
+                onClick={toggleChat}
+                className="relative p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Encerrar Chamada */}
+              <button
+                onClick={endCall}
+                className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                <PhoneOff className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat */}
+        {showChat && (
+          <div className="absolute right-4 top-20 bottom-20 w-80 bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
+            {/* Header do Chat */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 className="text-white font-medium">Chat</h3>
+              <button
+                onClick={toggleChat}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mensagens */}
+            <div 
+              ref={chatContainerRef}
+              className="flex-1 overflow-y-auto p-4 space-y-3"
+            >
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`${
+                    message.type === 'system' 
+                      ? 'text-center text-gray-400 text-sm'
+                      : message.senderId === user?.id
+                        ? 'text-right'
+                        : 'text-left'
+                  }`}
+                >
+                  {message.type === 'text' && (
+                    <div className={`inline-block max-w-xs p-2 rounded-lg ${
+                      message.senderId === user?.id
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-700 text-white'
+                    }`}>
+                      <div className="text-xs opacity-75 mb-1">
+                        {message.senderName}
+                      </div>
+                      <div>{message.message}</div>
+                    </div>
+                  )}
+                  {message.type === 'system' && (
+                    <div>{message.message}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Input de Mensagem */}
+            <div className="p-4 border-t border-gray-700">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  placeholder="Digite sua mensagem..."
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500"
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={!newMessage.trim()}
+                  className="bg-primary-500 hover:bg-primary-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

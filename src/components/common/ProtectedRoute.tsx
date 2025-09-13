@@ -25,7 +25,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = f
   }
 
   // Verifica se a rota é apenas para admin
-  if (adminOnly && user?.role !== 'admin') {
+  if (adminOnly && user?.role !== 'ADMIN') {
     return <Navigate to="/app/dashboard" replace />;
   }
 

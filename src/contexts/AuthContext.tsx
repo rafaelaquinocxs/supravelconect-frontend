@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from '../services/api';
 
-interface User {
+// Tipos exportados
+export type UserRole = 'ADMIN' | 'TECHNICIAN' | 'CLIENT' | 'SERVICE_PROVIDER';
+
+export interface User {
   id: string;
   name: string;
   email: string;
@@ -9,7 +12,7 @@ interface User {
   profileImage?: string;
   avatarUrl?: string;
   userType: string;
-  role?: string;
+  role?: UserRole;
   isActive: boolean;
   credits: number;
   rating: number;
@@ -20,22 +23,25 @@ interface User {
   lastLoginAt?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   register: (userData: RegisterData) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   loading: boolean;
+  isLoading: boolean; // Alias para loading
+  error: string | null;
   updateUser: (userData: Partial<User>) => void;
   isAuthenticated: boolean;
 }
 
-interface RegisterData {
+export interface RegisterData {
   name: string;
   email: string;
   password: string;
   phone?: string;
+  userType?: UserRole;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,11 +62,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Verificar token salvo no localStorage ao inicializar
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        setError(null);
         const savedToken = localStorage.getItem('token');
         const savedUser = localStorage.getItem('user');
         
@@ -76,16 +84,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             
             console.log('✅ Token e usuário carregados do localStorage');
             
-            // CORREÇÃO: Não tentar verificar token se a rota não existe
-            // Manter usuário logado com base no localStorage
-            
           } catch (parseError) {
             console.error('❌ Erro ao fazer parse do usuário salvo:', parseError);
+            setError('Erro ao carregar dados do usuário');
             handleLogout();
           }
         }
       } catch (error) {
         console.error('❌ Erro ao inicializar autenticação:', error);
+        setError('Erro ao inicializar autenticação');
         handleLogout();
       } finally {
         setLoading(false);
@@ -98,6 +105,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const handleLogout = () => {
     setUser(null);
     setToken(null);
+    setError(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     delete api.defaults.headers.common['Authorization'];
@@ -106,10 +114,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     try {
       setLoading(true);
+      setError(null);
       
       console.log('🔐 Tentando fazer login...');
       
-      // CORREÇÃO: Usar /auth/login ao invés de /api/auth/login
       const response = await api.post('/api/auth/login', {
         email: email.trim().toLowerCase(),
         password
@@ -123,6 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (responseToken && responseUser) {
           setToken(responseToken);
           setUser(responseUser);
+          setError(null);
           
           // Salvar no localStorage
           localStorage.setItem('token', responseToken);
@@ -135,12 +144,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           return { success: true, message: 'Login realizado com sucesso' };
         } else {
-          console.error('❌ Resposta inválida do servidor - token ou user ausente');
-          return { success: false, message: 'Resposta inválida do servidor' };
+          const errorMsg = 'Resposta inválida do servidor';
+          setError(errorMsg);
+          return { success: false, message: errorMsg };
         }
       } else {
-        console.error('❌ Login falhou:', response.data.message);
-        return { success: false, message: response.data.message || 'Erro no login' };
+        const errorMsg = response.data.message || 'Erro no login';
+        setError(errorMsg);
+        return { success: false, message: errorMsg };
       }
     } catch (error: any) {
       console.error('❌ Erro no login:', error);
@@ -148,26 +159,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       let errorMessage = 'Erro interno do servidor';
       
       if (error.response) {
-        // Erro de resposta do servidor
         if (error.response.status === 401) {
           errorMessage = 'Email ou senha incorretos';
-        } else if (error.response.status === 400) {
-          errorMessage = error.response.data?.message || 'Dados inválidos';
         } else if (error.response.status === 404) {
-          errorMessage = 'Rota não encontrada. Verifique se o backend está rodando corretamente.';
-        } else if (error.response.status === 500) {
-          errorMessage = 'Erro interno do servidor. Tente novamente.';
-        } else {
-          errorMessage = error.response.data?.message || 'Erro no servidor';
+          errorMessage = 'Usuário não encontrado';
+        } else if (error.response.data?.message) {
+          errorMessage = error.response.data.message;
         }
       } else if (error.request) {
-        // Erro de rede
-        errorMessage = 'Erro de conexão. Verifique se o backend está rodando na porta 5000.';
-      } else {
-        // Erro de configuração
-        errorMessage = 'Erro inesperado. Tente novamente.';
+        errorMessage = 'Erro de conexão com o servidor';
       }
       
+      setError(errorMessage);
       return { success: false, message: errorMessage };
     } finally {
       setLoading(false);
@@ -177,46 +180,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (userData: RegisterData): Promise<{ success: boolean; message?: string }> => {
     try {
       setLoading(true);
+      setError(null);
       
       console.log('📝 Tentando registrar usuário...');
       
-      // Limpar telefone se fornecido
-      const cleanUserData = {
+      const response = await api.post('/api/auth/register', {
         ...userData,
-        email: userData.email.trim().toLowerCase(),
-        name: userData.name.trim(),
-        phone: userData.phone ? userData.phone.replace(/\D/g, '') : undefined
-      };
-      
-      // CORREÇÃO: Usar /auth/register ao invés de /api/auth/register
-      const response = await api.post('/api/auth/register', cleanUserData);
+        email: userData.email.trim().toLowerCase()
+      });
 
       console.log('📡 Resposta do registro:', response.data);
 
       if (response.data.success) {
-        const { token: responseToken, user: responseUser } = response.data;
-        
-        if (responseToken && responseUser) {
-          setToken(responseToken);
-          setUser(responseUser);
-          
-          // Salvar no localStorage
-          localStorage.setItem('token', responseToken);
-          localStorage.setItem('user', JSON.stringify(responseUser));
-          
-          // Configurar token no axios
-          api.defaults.headers.common['Authorization'] = `Bearer ${responseToken}`;
-          
-          console.log('✅ Registro realizado com sucesso');
-          
-          return { success: true, message: 'Conta criada com sucesso' };
-        } else {
-          console.error('❌ Resposta inválida do servidor - token ou user ausente');
-          return { success: false, message: 'Resposta inválida do servidor' };
-        }
+        console.log('✅ Registro realizado com sucesso');
+        return { success: true, message: 'Usuário registrado com sucesso' };
       } else {
-        console.error('❌ Registro falhou:', response.data.message);
-        return { success: false, message: response.data.message || 'Erro no registro' };
+        const errorMsg = response.data.message || 'Erro no registro';
+        setError(errorMsg);
+        return { success: false, message: errorMsg };
       }
     } catch (error: any) {
       console.error('❌ Erro no registro:', error);
@@ -226,22 +207,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error.response) {
         if (error.response.status === 400) {
           errorMessage = error.response.data?.message || 'Dados inválidos';
-          
-          // Se há erros específicos, mostrar o primeiro
-          if (error.response.data?.errors && Array.isArray(error.response.data.errors)) {
-            errorMessage = error.response.data.errors[0];
-          }
         } else if (error.response.status === 409) {
           errorMessage = 'Email já está em uso';
-        } else {
-          errorMessage = error.response.data?.message || 'Erro no servidor';
+        } else if (error.response.data?.message) {
+          errorMessage = error.response.data.message;
         }
       } else if (error.request) {
-        errorMessage = 'Erro de conexão. Verifique se o backend está rodando na porta 5000.';
-      } else {
-        errorMessage = 'Erro inesperado. Tente novamente.';
+        errorMessage = 'Erro de conexão com o servidor';
       }
       
+      setError(errorMessage);
       return { success: false, message: errorMessage };
     } finally {
       setLoading(false);
@@ -258,6 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const updatedUser = { ...user, ...userData };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      console.log('✅ Usuário atualizado');
     }
   };
 
@@ -270,6 +246,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     loading,
+    isLoading: loading, // Alias para compatibilidade
+    error,
     updateUser,
     isAuthenticated
   };
@@ -280,3 +258,5 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+export default AuthContext;

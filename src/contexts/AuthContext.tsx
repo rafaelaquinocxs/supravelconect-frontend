@@ -112,70 +112,70 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('🔐 Tentando fazer login...');
+      
+      const response = await api.post('/api/auth/login', {
+        email: email.trim().toLowerCase(),
+        password
+      });
 
-    console.log('🔐 Tentando fazer login...');
+      console.log('📡 Resposta do login:', response.data);
 
-    const response = await api.post('/api/auth/login', {
-      email: email.trim().toLowerCase(),
-      password
-    });
-
-    console.log('📡 Resposta do login:', response.data);
-
-    if (response.data.success && response.data.data) {
-      const { token, ...userInfo } = response.data.data;
-
-      if (token) {
-        setToken(token);
-        setUser(userInfo as User);
-        setError(null);
-
-        // Salvar no localStorage
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(userInfo));
-
-        // Configurar token no axios
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-        console.log('✅ Login realizado com sucesso');
-
-        return { success: true, message: 'Login realizado com sucesso' };
+      if (response.data.success) {
+        const { token: responseToken, user: responseUser } = response.data;
+        
+        if (responseToken && responseUser) {
+          setToken(responseToken);
+          setUser(responseUser);
+          setError(null);
+          
+          // Salvar no localStorage
+          localStorage.setItem('token', responseToken);
+          localStorage.setItem('user', JSON.stringify(responseUser));
+          
+          // Configurar token no axios
+          api.defaults.headers.common['Authorization'] = `Bearer ${responseToken}`;
+          
+          console.log('✅ Login realizado com sucesso');
+          
+          return { success: true, message: 'Login realizado com sucesso' };
+        } else {
+          const errorMsg = 'Resposta inválida do servidor';
+          setError(errorMsg);
+          return { success: false, message: errorMsg };
+        }
       } else {
-        const errorMsg = 'Token não retornado pelo servidor';
+        const errorMsg = response.data.message || 'Erro no login';
         setError(errorMsg);
         return { success: false, message: errorMsg };
       }
-    } else {
-      const errorMsg = response.data.message || 'Erro no login';
-      setError(errorMsg);
-      return { success: false, message: errorMsg };
-    }
-  } catch (error: any) {
-    console.error('❌ Erro no login:', error);
-
-    let errorMessage = 'Erro interno do servidor';
-
-    if (error.response) {
-      if (error.response.status === 401) {
-        errorMessage = 'Email ou senha incorretos';
-      } else if (error.response.status === 404) {
-        errorMessage = 'Usuário não encontrado';
-      } else if (error.response.data?.message) {
-        errorMessage = error.response.data.message;
+    } catch (error: any) {
+      console.error('❌ Erro no login:', error);
+      
+      let errorMessage = 'Erro interno do servidor';
+      
+      if (error.response) {
+        if (error.response.status === 401) {
+          errorMessage = 'Email ou senha incorretos';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Usuário não encontrado';
+        } else if (error.response.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.request) {
+        errorMessage = 'Erro de conexão com o servidor';
       }
-    } else if (error.request) {
-      errorMessage = 'Erro de conexão com o servidor';
+      
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
     }
-
-    setError(errorMessage);
-    return { success: false, message: errorMessage };
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const register = async (userData: RegisterData): Promise<{ success: boolean; message?: string }> => {
     try {

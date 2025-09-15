@@ -12,7 +12,7 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 // API base URL
-const API_URL = 'http://localhost:5000';
+const API_URL = 'https://supravelconnect-backend.herokuapp.com';
 
 export const SocketProvider = ({ children }: { children: ReactNode }) => {
   const [socket, setSocket] = useState<Socket | null>(null);

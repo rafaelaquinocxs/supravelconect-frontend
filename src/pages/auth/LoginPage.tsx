@@ -11,15 +11,16 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Redirecionar se já estiver autenticado
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/app/dashboard');
+    if (isAuthenticated && !authLoading) {
+      console.log('🔄 Usuário já autenticado, redirecionando...');
+      navigate('/app/dashboard', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,10 +56,8 @@ const LoginPage: React.FC = () => {
         setSuccess('Login realizado com sucesso! Redirecionando...');
         console.log('✅ Login bem-sucedido, redirecionando...');
         
-        // Aguardar um pouco antes de redirecionar para mostrar a mensagem
-        setTimeout(() => {
-          navigate('/app/dashboard');
-        }, 1000);
+        // Redirecionar imediatamente após login bem-sucedido
+        navigate('/app/dashboard', { replace: true });
       } else {
         setError(result.message || 'Erro no login');
         console.error('❌ Falha no login:', result.message);
